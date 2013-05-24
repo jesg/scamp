@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<faqs xmlns="http://maven.apache.org/FML/1.0.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/FML/1.0.1 http://maven.apache.org/xsd/fml-1.0.1.xsd"
+  title="Frequently Asked Questions"
+  toplink="false">
+
+  <part id="general">
+    <title>General</title>
+
+    <faq id="whats-ruge">
+      <question>
+        What is Ruge?
+      </question>
+      <answer>
+        <p>A framework for generating and executing event-driven tests.</p>
+      </answer>
+    </faq>
+
+    <faq id="why-prolog">
+      <question>
+        Why Prolog?
+      </question>
+      <answer>
+        <ol>
+        <li>Declarative vs. procedural (for the most part)</li>
+        <li>Excels at 'exploring search space' for valid sequences</li>
+        <li>Simple data structures rather than static types</li>
+        </ol>
+      </answer>
+    </faq>
+  </part>
+
+  <part id="install">
+
+    <title>Installation</title>
+
+    <faq id="how-install">
+      <question>
+        How do I install Ruge?
+      </question>
+      <answer>
+        <p>TBD</p>
+      </answer>
+    </faq>
+
+  </part>
+
+  <part id="Prolog">
+
+    <title>Prolog Rule Programming</title>
+
+    <faq id="how-install">
+      <question>
+        How do I import RUGE Prolog libraries?
+      </question>
+      <answer>
+        <p>Set file_search_path, e.g.:</p>
+
+        <source>
+user:file_search_path(ruge,'c:/some/where').
+:- include(ruge(common)).
+        </source>
+        <p>In order to avoid hard-coding the path in Prolog code, the path can be retrieved from the environment
+        or as a -DRUGE_HOME=path argument on the command line.</p>
+		<source>
+user:file_search_path(ruge,'$RUGE_HOME').
+:- include(ruge(common)).
+		</source>
+      </answer>
+    </faq>
+
+  </part>
+
+  <part id="Java">
+
+    <title>Java Rule Execution</title>
+
+    <faq id="how-install">
+      <question>
+        How is the RUGE Java component different from the RUGE Prolog component?
+      </question>
+      <answer>
+        <p>The Java component is for executing tests. The RUGE component generates tests.</p>
+      </answer>
+    </faq>
+
+  </part>
+
+</faqs>

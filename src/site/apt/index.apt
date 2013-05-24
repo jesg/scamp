@@ -1,0 +1,21 @@
+            ------
+            Ruge
+            ------
+            Brendan McCarthy
+            ------
+            May 12, 2013
+
+  RUGE (RUle GEnerator) is a system for generating and executing tests for event-driven systems. 
+  It is comprised of a <<Prolog based framework>> to generate tests, and a <<Java based framework>> to execute tests.
+  One can be used independently of the other, for example, if one only wanted to use only the test generation capability.
+  However, they are designed to work well together.
+  
+  Ruge provides rule-guided <<random test generation>>, and as such is intended to compliment rather than your existing 
+  capabilities. Ruge aims to fill the void between the practical limitiations of creating and managing large numbers of 
+  manually crafted integration or system tests on the one hand, and the complexity limitations of generating large numbers 
+  of non-simplisitic load tests on the other. Ruge provides a programming paradigm to generate semantically rich tests in
+  volume.
+  
+  Ruge also provides the capability of comparing datasets across systems. This is useful when verifying a new version of
+  a system vs. an existing version.
+

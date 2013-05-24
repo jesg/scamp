@@ -1,0 +1,7 @@
+syntax: regexp
+.classpath
+.project
+syntax: regexp
+.settings/*
+syntax: regexp
+target/*
