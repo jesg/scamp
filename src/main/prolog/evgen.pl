@@ -25,21 +25,12 @@
 :- use_module(typer).
 :- use_module(utils).
 
-%:- op(520,yfx,'..').  % a little higher than '-'
 :- op(700,xfx,as).
-:- op(950,xfy,pct).
-%:- op(1150,xfy,pct).
-%:- op(1000,fy,pct).
-:- op(950,fy,pct).
 :- op(500,xfy,generate).
 :- op(1150,fx,generate).
 :- op(400,xf,k). % thousand
 :- op(400,xf,m). % million
 :- op(400,xf,b). % billion
-
-% Notes
-% 1: Simulate entire state
-% 2: Simulate isolated sequences over time, sort, phase 2 to mix in verification queries
 
 
 :- meta_predicate findone(2).
@@ -160,7 +151,6 @@ buffer(Mod:Src) :-
 	expr_generator(buffer(Src),Mod,Name,Gen,T),
 	current_output(Stream),
 	output(Stream,Mod,Name,Gen,T).
-%	format("Output buffer to module ~a~n",[Name]).
 
 seq(Mod:Src) :-
 	tell_starting_from('seq'),
@@ -179,11 +169,6 @@ csort(Column,Mod:Src) :-
 	expr_generator(csort(Column,Src),Mod,Name,Gen,T),
 	current_output(Stream),
 	output(Stream,Mod,Name,Gen,T).
-
-%pct(Mod:Src) :-
-%	expr_generator(pct(Src),Mod,Name,Gen,T),
-%	current_output(Stream),
-%	output(Stream,Mod,Name,Gen,T).
 
 follow(LookAhead,Mod:Src,Follow) :-
 	tell_starting_from('follow'),
@@ -216,6 +201,33 @@ expr(Expr,Down,Mod,F,Gen,T) :-
 	(expr1(Expr,Down,Mod,F,Gen,T)->
 	    true;
 	    throw('SubExprFailed'(Expr))).
+
+% foo(X,Y)
+% generate foo(X,Y)
+% bar generate foo(X,Y)
+% N generate foo(X,Y)
+% bar(N) generate foo(X,Y)
+% bar(N,pos=P) generate foo(X,Y) :- get_mutble(V,P).
+% bar(N), pos=P generate foo(X,Y) :- get_mutble(V,P).
+
+% foo(X,Y)
+% ::foo(X,Y)
+% bar::foo(X,Y)
+% N::foo(X,Y)
+% bar(N)::foo(X,Y)
+% bar(N,pos=P)::foo(X,Y) :- get_mutble(V,P).
+% bar(N), pos=P::foo(X,Y) :- get_mutble(V,P).
+
+% 'bar::([InArgs],_Limit,Pos,foo(X,Y)) :- bar(InArgs,pos=P)::foo(X,Y).
+
+% 'bar::(bar,1,[InArgs],_Limit,Pos,T,(bar(InArgs,pos=P)::T)).
+
+% 'bar::(N,P,foo(X,Y)) 
+
+% '$grule'(Pred,Arity,InArgs,Limit,Index,Peek,Term,true),
+% '$grule'(template(template(A,B,C),B,C,D), 4, [E], _, _, _, template, F) :-
+% '$grule'(action, 1, [A], _, _, _, B, C) :-
+% call(user:'$grule'(template,_8036,_8087,_8088,_8089,_8090,_8091,false)).
 
 expr1(Gp,Down,Mod,Pred,xgen(Args,Pred,Arity,Down,Mod,T),T) :-
 	Gp =.. [gen|Z],
@@ -293,7 +305,6 @@ xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T) :-
 	Key = follow_key, % TBD recursive
 	Mod:bb_put(Key,[]),
 	Gm,
-	%(Tm=update_event(9342,_Src,_Channel,_Sender,created,_Date,_Template,_Accounts,_2140001274,_Payload)->format("follow1.YES~n",[]);true),
 	Mod:bb_get(Key,Peek),
 	length(Peek,PeekLen),
 	(PeekLen < LookAhead ->
@@ -307,8 +318,6 @@ xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T) :-
 		Alt \== fail,
 		once(Alt),
 		Tf=T)).
-	%(T=update_event(9342,_Src,_Channel,_Sender,created,_Date,_Template,_Accounts,_2140001274,_Payload)->format("follow2.YES~n",[]);true).
-
 
 plist([],_,_,_,[],_).
 plist([X|Xs],Down,Mod,Name,[G|Gs],T) :-
@@ -325,7 +334,6 @@ prepare_bases(N,L) :-
 		prepare_bases(N1,Z))).
 
 in_conflict(Mod,BaseKey,ConflictValues) :-
-%	Mod:unstable(ConflictId,push,Next,ConflictValues),
 	Mod:bb_get(BaseKey,Bases),
 	format("in_conflict(~p,~p,~p,bases=~p)~n",[Mod,BaseKey,ConflictValues,Bases]),
 	member(Cv,ConflictValues),
@@ -333,8 +341,6 @@ in_conflict(Mod,BaseKey,ConflictValues) :-
 	member(Cv,Base),
 	format("Conflict found! ~p in ~p~n",[Cv,ConflictValues]).
 
-%stabilize(_Count,_Mod,_ConflictId,_BaseKey,_PendingKey,Gen,T,T) :-
-%	Gen.
 stabilize(Count,Mod,ConflictId,BaseKey,PendingKey,Gen,Next,T) :-
 	prepare_bases(Count,Bases),
 	Mod:bb_put(BaseKey,Bases),
@@ -401,14 +407,9 @@ keyword_arg(index,_,V,_,V).
 keyword_arg(peek,_,_,V,V).
 
 xbuffer(Mod,_Name,Gen,T,T) :-
-%	(current_predicate(N,Mod:P)->  % TBD arity
-%	    retractall(Mod:P);
-%	    true),
 	Gen,
-	%(T=update_event(9342,_Src,_Channel,_Sender,created,_Date,_Template,_Accounts,_2140001274,_Payload)->(format("buffer1.YES~n",[]),blue_doggie);true),	
 	AssertMod = Mod,  % TBD
 	xassert(Mod,AssertMod,T).
-	%(T=update_event(9342,_Src,_Channel,_Sender,created,_Date,_Template,_Accounts,_2140001274,_Payload)->format("buffer2.YES~n",[]);true).
 
 blue_doggie.
 
@@ -462,18 +463,13 @@ wgen(_,_,_,_,_).
 format_type(csv,T,Mod,Stream) :- format_csv(',',T,Mod,Stream).
 format_type(csv(Sep),T,Mod,Stream) :- format_csv(Sep,T,Mod,Stream).
 
-%format_csv(Sep,T_hack,Mod,Stream) :-
 format_csv(Sep,T,Mod,Stream) :-	
-%	(functor(T_hack,action,1)->
-%	    arg(1,T_hack,T);
-%	    T_hack=T),
 	functor(T,F,Arity),
 	write(Stream,F),
 	(format_csv_items(1,Sep,F,Arity,T,Mod,Stream,Spill)->
 	    true;
 	    throw('FormatFailure'(csv,T))),
 	nl(Stream),
-	%format("Spill ~p~n",[Spill]),
 	(foreach(Tn,Spill), param([Sep,Mod,Stream]) do (foreach(Tx,Tn), param([Sep,Mod,Stream]) do format_csv(Sep,Tx,Mod,Stream))).
 
 
@@ -486,9 +482,6 @@ format_csv_items(Pos,Sep,F,Arity,T,Mod,Stream,Spill) :-
 		Pos1 is Pos+1,
 		format_csv_items(Pos1,Sep,F,Arity,T,Mod,Stream,Sz))).
 	
-%format_csv_items(Sep,F,Arity,T,Mod,Stream) :-
-%	(for(X,1,Arity) do (write(Stream,Sep), arg(X,T,Arg), format_csv_item(F,X,Arg,Mod,Stream))).
-
 format_csv_item(Enc,Ord,Value,Mod,Stream,S1,S2) :-
 	(Mod:'$gfd'(_,Enc,_Arity,Ord,Type,_Inverse,_Min,Max,_Kx,_,_,_)->
 	    true;
@@ -506,13 +499,11 @@ format_single_csv_item(term,Mod,Stream,V) :-
 	(Mod:expose_term(V,Format,Args)->
 	    format(Stream,Format,Args);
 	    write(Stream,V)).
-%format_single_csv_item(_UserDefined,_Mod,Stream,V,S,[V|S]) :- write(Stream,1).
 
 format_csv_item_list(Vs,First,Type,Mod,Stream,S1,S2) :-
 	(member(Type,[date,string,int,term])->
 	    (format_csvs(Vs,First,Type,Mod,Stream),S1=S2);
 	    (length(Vs,Len), write(Stream,Len), S2 = [Vs|S1])).
-%	    (length(Vs,Len), format("HIT! ~p~n",[Vs]), abort, write(Stream,Len), S2 = [Vs|S1])).
 
 
 format_csvs([],_,_,_,_).
@@ -556,65 +547,6 @@ listify(X,Y) :-
 		(Y=[H|Z], listify(T,Z));
 		Y = [X])).
 
-%C generate update_event(X) :- between(1,C,Z), (Z=3->X=0;X=Z).
-%generate query_by_account(x).
-%generate query_by_recipient(x).
-
-
-
-
-%%%
-%%% Term expansion
-%%%
-
-% TBD should probably still findall & merge nested probabilities. Otherwise this only applies to the
-% top-level goal, which can still succeed on invocations rather than merge them together. Thus below
-% the probability of 'a' is just 4% : (.2 * .2) = .04.
-%
-%   20 foo(a).
-%   80 foo(b).
-%   20 bar(X) :- foo(X).
-%   80 bar(c).
-
-
-expand_generator_term(((Pct pct Term) :- Body), M, (ExpandedTerm :- Body)) :- !, expand_pct_term(Pct,Term,M,ExpandedTerm).
-expand_generator_term((Pct pct Term), M, ExpandedTerm) :- expand_pct_term(Pct,Term,M,ExpandedTerm).
-expand_generator_term(end_of_file, M, end_of_file) :- expand_generator_eof(M).
-
-
-expand_generator_eof(M) :-
-	current_predicate(M:'track_pct_expand$$'/5),
-	bagof((Index:Pct),(M:'track_pct_expand$$'(F,A,Fr,Pct,Index)),Ixs),
-	%format("G_EOF ~p/~p ~p~n",[F,A,Ixs]),
-	percent(ActualIndex,Ixs,Gen),
-	length(HeadArgs,A),
-	Fh =.. [F|HeadArgs],
-	BodyArgs = [ActualIndex|HeadArgs],
-	Fb =.. [Fr|BodyArgs],
-	%assert((M:Fh :- Gen, Fb)),
-	M:assert((pct(Fh) :- Gen, Fb)),
-	M:assert((Fh :- Fb)),
-	fail.
-expand_generator_eof(_).
-	       
-
-expand_pct_term(Pct,Term,M,ExpandedTerm) :-
-	functor(Term,F,A),
-	%format("--XPAND ~a:~a/~p~n",[M,F,A]),
-	((current_predicate(M:'track_pct_expand$$'/5), findall(tag,M:'track_pct_expand$$'(F,A,_,_,_),Tags))->
-	    length(Tags,Index);
-	    Index=0),
-	Term =.. [F|Args],
-	atom_concat(F,'$$',Fr),
-	assert(M:'track_pct_expand$$'(F,A,Fr,Pct,Index)),
-	ExpandedTerm =.. [Fr,Index|Args].
-
-user:term_expansion(Term1, Layout, Ids, Term2, Layout, [pct_token|Ids]) :-
-	nonmember(pct_token, Ids),
-	prolog_load_context(module,Module),
-	(current_predicate(expand_generator_term/3)-> % avoid strange error msg when loading this module
-	    expand_generator_term(Term1,Module,Term2),
-	    true).
 
 
 

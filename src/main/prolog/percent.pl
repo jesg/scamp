@@ -13,7 +13,7 @@
 % See the License for the specific language governing permissions and
 % limitations under the License.
 %-------------------------------------------------------------------------------
-:- module(percent,[percent/2, percent/3]).
+:- module(percent,[percent/2, prepare_percent/2]).
 
 :- use_module(library(random)).
 :- use_module(library(lists)).
@@ -22,137 +22,310 @@
 :- load_files(library(plunit),[if(changed),load_type(source)]).
 
 :- op(520,yfx,'..').  % a little higher than '-'
+:- op(200,fy,':').  % same as '+'
+:- op(950,fy,pct).
+:- op(950,xfy,pct).
 
-
-% TBD nesting user/1, sys/1 constructs to handle nested structs
-% TBD percent(Accounts,fn(length([1:85,2:10,3,4]),+percent(_,[AccountStart..AccountEnd])),Accounts_f),
-% TBD provide option for nested tracked
-% TBD fast non-compiled
-% TBD comma-separate predicates
-
-
-
-% percent(?VarToBind,+BindingExpr).
-% percent(?VarToBind,+BindingExpr,-Generator).
+% File: percent.pl
+% Author: Brendan McCarhty
 %
-percent(Var,Expr) :-
-	percent(Var,Expr,Gen),
-	Gen.
-percent(Var,Expr,percent:Gen) :-
-	(var(Expr)->throw('IllegalUnboundArgumentException'(arg=2,percent(Var,Expr,Gen)));true),
-	default_context(Context),
-	rewrite(Expr,Context,Var,Gen).
+% This file contains utilities for random value generation based on percentage expressions.
+% This includes the percent/2 and prepare_percent/2 predicates as well as term expansion for terms 
+% using the 'pct' operator in the clause head, e.g.:
+%
+%  20 pct foo(a).
+%  30 pct foo(b)
+%  pct foo(c)
+%
+% Predicates defined this way are rewritten such that any invocation will attempt to unify
+% with one and only one of the clauses, where the chosen clause is weighted toward the
+% provided percentages -- these should not exceed 100, and clauses with no value are assigned
+% equal probability of the remaining total from the sum of all explicitly valued clauses (the
+% third clause above, for example, is assigned a percentage probability of 50%). Note that if
+% the randomly-chosen clause fails, then another clause is not attempted for a given call.
 
-default_context(context(Min,linear,1,Max)) :-
-	current_prolog_flag(min_tagged_integer,Min),
-	current_prolog_flag(max_tagged_integer,Max).
+:- meta_predicate percent(+,2).
+:- meta_predicate prepare_percent(2,+).
 
-rewrite(Expr,exec(Var,Gen)) :- rewrite(Expr,Var,Gen).
-rewrite(Expr,Var,Gen) :-
-	default_context(Context),
-	rewrite(Expr,Context,Var,Gen).
-rewrite(A,_,Var,Var=A) :- atomic(A).
-rewrite(Expr,Context,Var,Gen) :-
-	refn(Expr,Context,C1),
-	arith(C1,Var,Gen).
-rewrite(fn(Fn,Sub),Context,Var,Gen) :- fn_rewrite(Fn,Sub,Context,Var,Gen).
-rewrite((X+D):P,Context,Var,Gen) :- rewrite(X+(D:P),Context,Var,Gen).
-rewrite((+D):P,Context,Var,Gen) :- rewrite(+(D:P),Context,Var,Gen).
-rewrite(+Pred,Context,Var,Gen) :- rewrite([]+Pred,Context,Var,Gen).
-rewrite([D|Ds],Context,Var,Gen) :- rewrite([D|Ds]+true,Context,Var,Gen).
-rewrite(Dist+Pred,Context,Var,eval(Gen,Var)) :-
-	once(bind_pred(Pred,Pred1,Var)),
-	(Pred=true->Vs=[];(findall(Var,Pred1,Vs))),
-	(Pred=percent(Var,Spec)->    % Make a nested percent a lazy eval
-	    percent(Var,Spec,percent:eval(Gen,Var));
-	    rewire(Dist,Vs,Context,Var,Gen)
-	).
+% percent(?Value,:Expr)
+% Value is randomly consistent with Expr. Expr can be:
+%
+% (1) A simple value.
+% (2) A range (Min..Max) optionally with a qualification function e.g. (Min..Fn..Max), where Fn may be:
+%     * avg(X)
+%     * step(X)
+%     The range is inclusive. Min and Max may be numbers or dates as in '1-jan-2012', which simply
+%     provides a readable format that is immediately converted into epoch seconds. When Min is
+%     a date, Max may also be a relative offset such as days(100), hours(16), etc.
+% (3) A list of values to draw from, where each element of the list is an (Expr) or (Expr:P),
+%     where P is the probability of selecting that entry. Remaining elements with no explicit P are assigned
+%     remaining probability equally thus in [a:50,b,c] both 'b' and 'c' will have a 25% chance of matching.
+% (4) A merge of lists (Expr1 + Expr2), where the merged result is then treated equivalently to the previous case.
+%     For any pair of matching entries between the two lists, if one has a P supplied (Expr:P), then that P will 
+%     be included in the merged result. For example ([a,b:40,c:20] + [b,d]) merges to [a,b:40,c:20,d].
+% (5) A reference to a user-defined predicate (:pred) whose first argument will provide a domain of values.
+%     Syntax note: insert a space when combined with '+', e.g (a + : b), not (a +: b).
+% (6) A list-generator of the form F(LenExpr,Expr) that will produce a list of the supplied LenExpr.
+%     The 'F' may be one of the following:
+%     * bag - may contain dups
+%     * set - will not contain dups
+%     * kit - like 'set', except that it will reduce the length if it cannot possibly be satisfied
+%     In all cases, a result that might otherwise evaluate to the empty set will fail.
+%
+%     Note 'set' may safely be applied to large domain expressions such as in (set(2,1..9999999)) since it
+%     does not (necessarily) pre-generate all elements of the domain. To do this however it must generate
+%     then retry duplicate entries. Since this is a potentially intractable operation it meters itself
+%     and throws an exception after a 'reasonable' number of tries. 'Kit' on the other hand always
+%     pre-generates if possible and thus simply fails if there is no possible answer.
+%
+percent(V,Mod:Expr) :- once(peval(Expr,Mod,V)).
 
-% TBD +(x,y) does not work; maybe drop '+' prefix?
+peval(C,_,C) :- simple(C).
+peval(Min..Max,_,V) :- eval_range(Min,Max,V).
+peval([X|Z],Mod,V) :- 	random(0,101,R), walk([X|Z],Mod,R,[],V).
+peval(:Pred,Mod,V) :-
+	arg(1,Pred,X),
+	findall(X,Mod:Pred,Xs), peval(Xs,Mod,V).
+peval(F1+F2,Mod,V) :-
+	gen_list(F1+F2,Mod,Lm),
+	peval(Lm,Mod,V).
+peval(bag(LenExpr,ListExpr),Mod,V) :-
+	eval_length(LenExpr,Mod,Len),
+	(expand_expr(set,Len,ListExpr,Mod,List)->
+	    random_bounded_subset(Len,Mod,List,false,V);
+	    eval_bag(Len,ListExpr,Mod,V)).
+peval(set(LenExpr,ListExpr),Mod,V) :-
+	eval_length(LenExpr,Mod,Len),
+	(expand_expr(bag,Len,ListExpr,Mod,List)->
+	    random_bounded_subset(Len,Mod,List,true,V);
+	    eval_set(Len,ListExpr,Mod,V)).
+peval(kit(LenExpr,ListExpr),Mod,V) :-
+	eval_length(LenExpr,Mod,Len),
+	expand_expr(kit,Len,ListExpr,Mod,List),
+	length(List,DomainLen),
+	KitLen is min(Len,DomainLen),
+	KitLen > 0,
+	random_bounded_subset(KitLen,Mod,List,true,V).
+peval(arg(S),Mod,V) :-
+	functor(S,_,A),
+	A1 is A + 1,
+	random(1,A1,X),
+	arg(X,S,V1),
+	peval(V1,Mod,V).
+
+% prepare_percent(+Expr,?PreparedExpr)
+% PreparedExpr is Expr or an optimized form of it that may
+% later be passed to percent/2, e.g.:
+%
+%   prepare_percent([a:20,b],Prep), percent(V,Prep).
+%
+% This is only for effeciency, as compared to just calling percent/2 directly.
+% The above example is only for illustration and itself would not be more efficient
+% than just calling percent/2 directly. Only where Prep may be reused across multiple
+% calls to percent, this *may* be more efficient.
+%
+prepare_percent(Mod:Expr,V) :- once(prep(Expr,Mod,V)).
+
+prep(:Pred,Mod,V) :-
+	arg(1,Pred,X),
+	findall(X,Mod:Pred,V).
+prep(F1+F2,Mod,V) :-
+	gen_list(F1+F2,Mod,V).
+prep([X|R],_Mod,arg(V)) :-
+	balance([X|R],L),
+	V =.. [x|L].
+prep(bag(Lx,Ex),Mod,bag(Ly,Ey)) :-
+    prep(Lx,Mod,Ly),
+    prep(Ex,Mod,Ey).
+prep(set(Lx,Ex),Mod,kit(Ly,Ey)) :-
+    prep(Lx,Mod,Ly),
+    prep(Ex,Mod,Ey).
+prep(kit(Lx,Ex),Mod,kit(Ly,Ey)) :-
+    prep(Lx,Mod,Ly),
+    prep(Ex,Mod,Ey).
+prep(T,_,T).
 
 
-bind_pred(M:Pred,M:Pred1,Var) :-  bind_pred(Pred,Pred1,Var).
-bind_pred(Pred,Pred1,Var) :- atomic(Pred), Pred1 =.. [Pred,Var].
-bind_pred(Pred,Pred,Var) :- arg(1,Pred,Var).
 
-refn(min(Min),context(_Min,Dist,Step,Max),context(Min1,Dist,Step,Max)) :- redate(Min,Min1).
-refn(max(Max),context(Min,Dist,Step,_Max),context(Min,Dist,Step,Max1)) :- redate(Max,Max1).
-refn(avg(Avg),context(Min,_Dist,Step,Max),context(Min,avg(Avg1),Step,Max)) :- redate(Avg,Avg1).
-refn(step(Step),context(Min,Dist,_Step,Max),context(Min,Dist,Step,Max)).
-refn(Min..Max,context(_Min,Dist,Step,_Max),context(Min1,Dist,Step,Max1)) :-
-	redate(Min,Min1),
-	(Max=days(Days)->  % TBD support other time units besides days
-	    date_plus(Min1,days(Days),Max1);
-	    redate(Max,Max1)).
+% balance(+WeightedList,?BalancedList)
+% WeightedList contains elements of the form X:P,
+% and BalancedList is a list of all the Xs,
+% each duplicated by P. The final result is
+% minimized by the GCD of all the counts.
+balance(L,B) :-
+	enumerate(L,L1),
+	(gcd(L1,_,L2)->
+	    true;
+	    L1 = L2),
+	expand(L2,B).
+
+
+enumerate(X,Y) :- enumerate(X,0,_,0,Y).
+enumerate([],Total,N,ImplicitCount,[]) :-
+	(ImplicitCount =:= 0->
+	    N=0;
+	    N is (100-Total) // ImplicitCount).
+enumerate([X|R],Total,N,ImplicitCount,[Y:P|Z]) :-
+	(X = Y:P->
+	    (T1 is Total+P,
+		I1 = ImplicitCount);
+	    (T1 = Total,
+		I1 is ImplicitCount + 1,
+		X = Y,
+		P = N)),
+	enumerate(R,T1,N,I1,Z).
+
+gcd([],_,[]).
+gcd([X:Px|R],GCD,[X:Dx|Z]) :-
+	(R = [_:Py|_]->
+	    (Px<Py->(Lesser=Px,Greater=Py);(Lesser=Py,Greater=Px));
+	    (Lesser=Px,Greater=Px)),
+	(nonvar(GCD)->
+	    true;
+	    (between(2,Lesser,N),
+		GCD is (Lesser+2-N))),
+	Lesser rem GCD =:= 0,
+	Greater rem GCD =:= 0,
+	gcd(R,GCD,Z),
+	Dx is Px // GCD.
+
+expand([],[]).
+expand([X:P|R],Rez) :-
+	(P > 0 ->
+	    (Rez = [X|Z],
+		P1 is P -1,
+		expand([X:P1|R],Z));
+	    (Rez = Z,
+		expand(R,Z))).
+
+
+% eval_range(+Min,+Max,?V)
+% Generate a random value between Min and Max inclusive.
+% Min may also include intermediate functions (e.g. avg/1)
+% and the values may be dates.
+eval_range(Min,Max,V) :-
+	redate_range_pair(Min,Max,Min1,Max1),
+	simple(Min1),
+	prandom(Min1,Max1,V).
+eval_range(Min..avg(Avg),Max,V) :-
+	redate_range_pair(Min,Max,Min1,Max1),
+	redate_intermediate(Avg,Avg1),
+	random_mean(Min1,Avg1,Max1,V).
+eval_range(Min..step(Step),Max,V) :-
+	redate_range_pair(Min,Max,Min1,Max1),
+	redate_intermediate(Step,Step1),	
+	prandom(Min1,Max1,V1),
+	V is (V1 - ((Min+V1) mod Step1)).
 
 redate(Date1,Date2) :- (idate(Date1,Date2)->true; Date1=Date2).
 
+redate_range_pair(Min,Max,Min1,Max1) :-
+	redate(Min,Min1),
+	(date_plus(Min1,Max,Max1)->
+	    true;
+	    redate(Max,Max1)).
 
-fn_rewrite(Fn,Sub,Context,Var,Gen) :-
-	refn(Fn,Context,C1),
-	rewrite(Sub,C1,Var,Gen).
-fn_rewrite(length(Len),Sub,Context,Var,multi(Rlen,OneVar,Var,Gen)) :-
-	cxwrite(Len,Rlen),
-	rewrite(Sub,Context,OneVar,Gen).
+redate_intermediate(V,R) :-
+	(utils:date_operand_to_seconds(V,R)->
+	    true;
+	    V=R).
 
 
-% catch context-embedded terms with arity>0 here
+eval_length(Expr,Mod,Len) :-
+	peval(Expr,Mod,Len),
+	(integer(Len)->true;throw(expr_error(list_length_not_integer,expr=Expr,evaluated_as=Len))).
+
+% expand_expr(+Kind,+Length,+Expr,+Mod,?Expanded)
+% Expanded is an enumeration of all items represented by Expr. Succeeds only
+% in cases where it is estimated to be a performance benefit, and the
+% result is not too large.
 %
-cxwrite(avg(A),Rez) :- !, rewrite(A,Var,Gen), once(ctxr(Var,avg(Var),Gen,Rez)).
-cxwrite(X,Y) :- rewrite(X,Y).
+expand_expr(_,_,:Pred,Mod,L) :-
+	arg(1,Pred,X),
+	findall(X,Mod:Pred,L).
+expand_expr(Kind,Len,WeightedList,_Mod,L) :-
+	(member(Kind,[kit,set])->
+	    true;
+	    Len > 5),
+	balance(WeightedList,L).
+expand_expr(set,Len,Min..Max,_,L) :-
+	((Max - Min) - Len) < 5,
+	(for(X,Min,Max), foreach(X,L) do true).
 
-ctxr(N,WrapperOut,N=N,exec(X,X=WrapperOut)).
-ctxr(_Var,WrapperOut,Gen,exec(Var,(Gen,Var=WrapperOut))).
+random_bounded_subset(0,_Mod,_List,_Reduce,[]).
+random_bounded_subset(N,Mod,List,Reduce,[X|Z]) :-
+	N > 0,
+	(Reduce->
+	    random_select(X,List,Rem);
+	    (random_member(X,List), Rem=List)),
+	N1 is N - 1,
+	random_bounded_subset(N1,Mod,Rem,Reduce,Z).
 
-simple(exec(X,X=Y),Y).
+eval_bag(0,_Expr,_Mod,[]).
+eval_bag(N,Expr,Mod,[X|Z]) :-
+	peval(Expr,Mod,X),
+	N1 is N-1,
+	eval_bag(N1,Expr,Mod,Z).
 
+eval_set(0,_Expr,_Mod,[]).
+eval_set(N,Expr,Mod,[X|Z]) :-
+	N > 0,
+	N1 is N-1,
+	eval_set(N1,Expr,Mod,Z),
+	MaxAttempts = 100,
+	between(1,100,Try),
+	(Try>=MaxAttempts->throw(impractical_expr(set(N,Expr)));true),
+	peval(Expr,Mod,X),
+	\+member(X,Z),
+	!.
 
-arith(context(Min,Dist,Step,Max),Var,Gen) :-
-	cxwrite(Min,Rmin),
-	cxwrite(Dist,Rdist),
-	cxwrite(Step,Rstep),
-	cxwrite(Max,Rmax),
-	((simple(Rmin,Min1), simple(Rmax,Max1), simple(Rstep,Step1), simple(Rdist,Dist1))->
-	    dexpr(Min1,Dist1,Step1,Max1,Var,Gen);
-	    Gen=eval(Rmin,Rdist,Rstep,Rmax,Var)).
-
-dexpr(Min,linear,1,Max,Var,prandom(Min,Max,Var)).
-dexpr(Min,avg(Avg),1,Max,Var,random_mean(Min,Avg,Max,Var)).
-dexpr(Min,linear,Step,Max,Var,step_prandom(Min,Max,Step,Var)) :- Step \== 1.
-dexpr(Min,avg(Avg),Step,Max,Var,step_random_mean(Min,Avg,Max,Step,Var)) :- Step \== 1.
-
-eval(exec(V,P),V) :- P.
-eval(dist(Type,Len,Pct,Index),V) :- eval_dist(Type,Len,Pct,Index,V).
-eval(Min,Dist,Step,Max,Var) :-
-	eval(Min,VMin),
-	eval(Dist,VDist),
-	eval(Step,VStep),
-	eval(Max,VMax),
-	dexpr(VMin,VDist,VStep,VMax,Var,Gen),
-	Gen.
-
-% multi(+LenGenerator,-Var,?Values,+ValueGenerator)
-% Values is generated by calling ValuGenerator Len times, where
-% Len is generated from LenGenerator. Only unique values are
-% generated, based on the presumption that the desired Values
-% are a subset of all possible values that can be generated and
-% regenerating a value is not desirable.
+% walk(+WeightedList,+Module,+RemainingPercent,+AccumulatedUnweighted,?Result)
+% Result is randomly generated from WeightedList or AccumulatedUnweighted.
+% The latter as well as RemainingPercent are calculated as the list is
+% processed.
 %
-multi(Len,Var,Vs,Gen) :-
-	eval(Len,VLen),
-	find_this_many(VLen,Var,Gen,[],Vs).
+walk([],Mod,_,Implicit,V) :-
+	random_member(Vexpr,Implicit),
+	peval(Vexpr,Mod,V).
+walk([X|Z],Mod,R,Implicit,V) :-
+	(X=X1:P->
+	    (R =< P ->
+		V = X1;
+		(R1 is R - P),
+		walk(Z,Mod,R1,Implicit,V));
+	    walk(Z,Mod,R,[X|Implicit],V)).
 
-find_this_many(N,_Var,_Gen,_,[]) :- N =< 0.
-find_this_many(Len,Var,Gen,SoFar,[Var1|Vs]) :-
-	Len > 0,
-	copy_term((Var,Gen),(Var1,Gen1)),
-	(repeat(1000),
-	    Gen1,
-	    nonmember(Var1,SoFar),
-	    !
-	    ),
-	Len1 is Len - 1,
-	find_this_many(Len1,Var,Gen,[Var1|SoFar],Vs).
+gen_list(L,_Mod,L) :- is_list(L).
+gen_list(ListExpr,Mod,L) :-
+	list_expr(ListExpr),
+	peval(ListExpr,Mod,L).
+gen_list(F1+F2,Mod,Lm) :-
+	gen_list(F1,Mod,L1),
+	gen_list(F2,Mod,L2),
+	merge_qualified_lists(L1,L2,Lm).
+gen_list(:Pred,Mod,L) :-
+	arg(1,Pred,X),
+	findall(X,Mod:Pred,L).
+
+list_expr(set(_,_)).
+list_expr(bag(_,_)).
+list_expr(kit(_,_)).
+
+merge_qualified_lists([],L,L).
+merge_qualified_lists([H1|Hz],L,Z) :-
+	(merge_entry(L,H1,L1)->
+	    true;
+	    L1 = [H1|L]),
+	merge_qualified_lists(Hz,L1,Z).
+
+merge_entry([X|Z],X,[X|Z]).
+merge_entry([X:P|Z],X,[X:P|Z]).
+merge_entry([X|Z],X:P,[X:P|Z]).
+merge_entry([X:P1|_],X:P2,_) :-
+	P1 \== P2,
+	throw(expr_error(percentage_merge_conflict(P1,P2))).
+
+
 
 step_random_mean(Low,Mean,High,Step,R) :-
 	random_mean(Low,Mean,High,V1),
@@ -174,245 +347,120 @@ step(V,Step,V1) :- V1 is Step * (V // Step).
 
 prandom(Low,High,V) :- H1 is High+1, random(Low,H1,V).
 
-r(Call,Times,R) :-
-	between(1,Times,_),
-	Call,
-	write(R), nl.
 
-x(Call,R,Times,Rez) :- findall(R,r(Call,Times,R),Rs), sumlist(Rs,Sum), Rez is Sum / Times.
+%%%
+%%% Term expansion
+%%%
 
-
-
-rewire(Spec,Base,Context,Var,Dist) :-
-	splitwrap(Spec,ExplicitSpec,ExplicitTotal,Context,Var,ImplicitSpec),  % wraps ExplicitSpec
-
-	shrink(Base,ImplicitSpec,Base1),
-	shrink(Base1,ExplicitSpec,Base2),
-	append(ImplicitSpec,Base2,CombinedBase),
-
-	ImplicitSlots is 100-ExplicitTotal,
-
-	(ExplicitSpec=[]->
-	    struct(CombinedBase,Dist1);
-	    (CombinedBase=[]->
-		(eq_dist(ExplicitSpec,_,EqSpec)->
-		    struct(EqSpec,Dist1);
-		    (scale(ExplicitSpec,Scaled), struct(Scaled,Dist1)));
-		emerge(ExplicitSpec,CombinedBase,ExplicitTotal,ImplicitSlots,Context,Var,Dist1))),
-	once(simplify(Dist1,Dist)).
-
-simplify(listmixed,2,Total,[X:Xp,Y:_],exec(V,(maybe(Prob)->eval(X,V);eval(Y,V)))) :- Prob is Xp/Total.
-simplify(X,X).
-
-emerge(Explicit,Base,ExplicitTotal,ImplicitSlots,Context,Var,Dist) :-
-	length(Base,BaseLen),
-	Per is ImplicitSlots // BaseLen,
-	((Per > 1,ImplicitSlots rem BaseLen =:= 0)->Strategy=merge;Strategy=split),
-	emerge1(Strategy,Explicit,Base,Per,ExplicitTotal,ImplicitSlots,Context,Var,Dist).
-
-emerge1(merge,Explicit,Base,Per,_ExplicitTotal,_ImplicitSlots,Context,Var,Dist) :-
-	pwrap(Base,Per,PerBase),
-	append(Explicit,PerBase,All),
-	rewire(All,[],Context,Var,Dist).
-emerge1(split,Explicit,Base,_Per,ExplicitTotal,ImplicitSlots,_Context,_Var,dist(listmixed,2,Total,[Dist1:ExplicitTotal,Dist2:ImplicitSlots])) :-
-	Total is ExplicitTotal + ImplicitSlots,
-	struct(Explicit,Dist1),
-	struct(Base,Dist2).
-		
-pwrap([],_,[]).
-pwrap([X|R],P,[X:P|Z]) :- pwrap(R,P,Z).
-	
-
-splitwrap([],[],0,_,_,[]).
-splitwrap([X:P|R],[Xw:P|Y],Total,Context,Var,Z) :-
-	wrap(X,Context,Var,Xw),
-	splitwrap(R,Y,T1,Context,Var,Z),
-	Total is T1 + P.
-splitwrap([X|R],Y,Total,Context,Var,[Xw|Z]) :-
-	\+ functor(X,':',2),
-	wrap(X,Context,Var,Xw),
-	splitwrap(R,Y,Total,Context,Var,Z).
-
-wrap_NOPE(X,Context,Var,Y) :-
-	(functor(X,'-',2)->  % TBD
-	    idate(X,Y);
-	    (is_list(X)->
-		(rewrite(X,Context,Var,Gen),
-		    Y=pct(Var,Gen));
-		X=Y)).
-
-wrap_ORG(X,Context,Var,Y) :-
-	((atomic(X);functor(X,pct,_))->
-	    X=Y;
-	    ((functor(X,'-',2)->
-	      idate(X,Y);
-	      (rewrite(X,Context,Var,Gen),
-		  Y=pct(Var,Gen))))).
-
-wrap(X,Context,Var,Y) :-
-	((atomic(X);functor(X,pct,_))->
-	    X=Y;
-	    ((functor(X,'-',2)->
-	      idate(X,Y);
-	      % TBD, percent built-in forms conflict with user-structured
-	      % elements -- didn't consider that when I wrote it! Here,
-	      % try the built-in forms first (if there is a conflict then
-	      % the unexpected might happen -bpm 28-Mar-13
-	      ((rewrite(X,Context,Var,Gen)->
-		Y=pct(Var,Gen);
-		X=Y))))).
+% TBD should probably still findall & merge nested probabilities. Otherwise this only applies to the
+% top-level goal, which can still succeed on invocations rather than merge them together. Thus below
+% the probability of 'a' is just 4% : (.2 * .2) = .04.
+%
+%   20 foo(a).
+%   80 foo(b).
+%   20 bar(X) :- foo(X).
+%   80 bar(c).
 
 
-shrink([],_List,[]).
-shrink([X|R],List,Z) :-
-	(memberchk(X,List);memberchk(X:_,List)->Z=S1;Z=[X|S1]),
-	shrink(R,List,S1).
+expand_generator_term(((Pct pct Term) :- Body), M, [TrackTerm,(ExpandedTerm :- Body)]) :- !, expand_pct_term(Pct,Term,M,TrackTerm,ExpandedTerm).
+expand_generator_term((Pct pct Term), M, [TrackTerm,ExpandedTerm]) :-
+	expand_pct_term(Pct,Term,M,TrackTerm,ExpandedTerm).
+expand_generator_term(end_of_file, M, Rez) :-
+	findall(Pred,expand_generator_at_eof(M,Pred),Preds),
+	append(Preds,[end_of_file],Rez).
 
-struct(List,dist(Type,Len,Total,Z)) :-
-	enumerate(List,Expanded),
-	length(Expanded,Len),
-	once(xform(Expanded,Len,Type,Total,Z)).
-
-sum_dist([],0).
-sum_dist([X|Y],Z) :- (X=_:P->(sum_dist(Y,Z1),Z is Z1+P);Z=100).
-
-scale(List,Scaled) :- eq_dist(List,_,Scaled), !.
-scale(List,Scaled) :- gcd(List,_,Scaled), !.
-scale(List,List).
-
-eq_dist([],_,[]).
-eq_dist([X:P|R],P,[X|Z]) :- eq_dist(R,P,Z).
-
-gcd([],_,[]).
-gcd([X:Px|R],GCD,[X:Dx|Z]) :-
-	(R = [_:Py|_]->
-	    (Px<Py->(Lesser=Px,Greater=Py);(Lesser=Py,Greater=Px));
-	    (Lesser=Px,Greater=Px)),
-	(nonvar(GCD)->
-	    true;
-	    (between(2,Lesser,N),
-		GCD is (Lesser+2-N))),
-	Lesser rem GCD =:= 0,
-	Greater rem GCD =:= 0,
-	gcd(R,GCD,Z),
-	Dx is Px // GCD.
-
-enumerate(X,Y) :- enumerate(X,1,Y).
-enumerate([],_,[]).
-enumerate([X:P|Y],M,[X|Z]) :- P > 0, P1 is P-1, enumerate([X:P1|Y],M,Z).
-enumerate([_:P|Y],M,Z) :- P =< 0, enumerate(Y,M,Z).
-enumerate([X|Y],M,Z) :- \+functor(X,':',2), enumerate([X:M|Y],M,Z).
+expand_generator_at_eof(M,(Fh :- (percent(ActualIndex,Ixs), Fb))) :-
+	current_predicate(M:'track_pct_expand$$'/5),
+	bagof((Index:Pct),(M:'track_pct_expand$$'(F,A,Fr,Index,Pct)),Ixs),
+	length(HeadArgs,A),
+	Fh =.. [F|HeadArgs],
+	Fb =.. [Fr,ActualIndex|HeadArgs].
 
 
-xform(List,Len,Type,100,X) :-
-	current_prolog_flag(max_arity,MaxArity),
-	(Len =< MaxArity->
-	    (X =.. [x|List], Type = structfixed);
-	    (X = List, Type = listmixed)).
-xform(List,_Len,mixu,Total,List) :-   %TBD
-	sum_dist(List,Total).
+functor_consts('$_pct_').
 
-% eval_dist(Type,Len,Pct,Index,V).
-eval_dist(structfixed,Len,_Pct,Index,V) :-
-	prandom(1,Len,ArgIndex),
-	arg(ArgIndex,Index,V1),
-	eval_dist_element(V1,V).
-eval_dist(listfixed,Len,_Pct,Index,V) :-
-	prandom(1,Len,ArgIndex),
-	nth1(ArgIndex,Index,V1),
-	eval_dist_element(V1,V).
-eval_dist(listmixed,_Len,Pct,Index,V) :-
-	random(0,Pct,ArgIndex),
-	eval_fit(Index,ArgIndex,V1),
-	eval_dist_element(V1,V).
+expand_pct_term(Pct,Term,M,TrackTerm,ExpandedTerm) :-
+	functor_consts(Pfx),
+	functor(Term,Term_functor,Term_arity),
+	((current_predicate(M:'track_pct_expand$$'/5),
+	    findall(Index,M:'track_pct_expand$$'(Term_functor,Term_arity,_,Index,_),Indexes))->
+	    length(Indexes,Len);
+	    Len = 0),
+	Index is Len + 1,
+	atom_concat(Pfx,Term_functor,Fr),
+	Term =.. [_|Args],
+	ExpandedTerm =.. [Fr,Index|Args],
+	TrackTerm =.. ['track_pct_expand$$',Term_functor,Term_arity,Fr,Index,Pct].
 
-eval_dist_element(pct(V,Gen),V) :- !, Gen.
-eval_dist_element(dist(Type,Len,Pct,Index),V) :- !, eval_dist(Type,Len,Pct,Index,V).
-eval_dist_element(X,X).
-
-eval_fit([X:P|R],N,V) :- (N =< P -> X=V ; (N1 is N-P, eval_fit(R,N1,V))).
-
-tp([a],[],dist(structfixed,1,100,x(a))).
-tp([],[a],dist(structfixed,1,100,x(a))).
-tp([a],[a],dist(structfixed,1,100,x(a))).
-tp([a:100],[],dist(structfixed,1,100,x(a))).
-tp([a:100],[a],dist(structfixed,1,100,x(a))).
-
-tp([a,b],[],dist(structfixed,2,100,x(a,b))).
-tp([],[a,b],dist(structfixed,2,100,x(a,b))).
-tp([a,b],[a,b],dist(structfixed,2,100,x(a,b))).
-tp([a:50,b],[],dist(structfixed,2,100,x(a,b))).
-tp([a,b:50],[],dist(structfixed,2,100,x(b,a))).
-tp([a:50,b],[a,b],dist(structfixed,2,100,x(a,b))).
-tp([a,b:50],[a,b],dist(structfixed,2,100,x(b,a))).
-tp([a:50,b:50],[a,b],dist(structfixed,2,100,x(a,b))).
-
-tp([a:50,b:40],[],dist(structfixed,9,100,x(a,a,a,a,a,b,b,b,b))).
-tp([a:50,b:40],[a,b],dist(structfixed,9,100,x(a,a,a,a,a,b,b,b,b))).
-
-tp([a:80],[a,b],dist(structfixed,5,100,x(a,a,a,a,b))).
-tp([a:80],[b,a],dist(structfixed,5,100,x(a,a,a,a,b))).
-tp([a:80,b],[a,b],dist(structfixed,5,100,x(a,a,a,a,b))).
-
-tp([a:40,c:40],[a,b,c],dist(structfixed,5,100,x(a,a,c,c,b))).
-tp([a:25,b:25],[a,b,c,d],dist(structfixed,4,100,x(a,b,c,d))).
-
-tp([a:13,b:7,c:11],[a,b,c],dist(structfixed,31,100,x(a,a,a,a,a,a,a,a,a,a,a,a,a,b,b,b,b,b,b,b,c,c,c,c,c,c,c,c,c,c,c))).
-tp([a:51,b],[],dist(structfixed,100,100,
-		    x(a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,
-		      b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b))).
-
-tp([5..6],[],dist(structfixed,1,100,x(pct(_,_)))).
-tp([5..6:80,d],[],dist(structfixed,5,100,x(pct(V,prandom(5,6,V)),pct(V,prandom(5,6,V)),pct(V,prandom(5,6,V)),pct(V,prandom(5,6,V)),d))).
-
-test_rewire(Spec,Dist,Rez) :-
-	default_context(Context),
-	rewire(Spec,Dist,Context,_,Rez).
-
-go :- tp(Spec,Dist,Exp),
-	(test_rewire(Spec,Dist,Got)->true;(format("FAILURE, (~p,~p) FAILED~n",[Spec,Dist]),!,fail)),
-	(Exp=Got->format("SUCCESS: (~p,~p) ==> ~p~n",[Spec,Dist,Got]);(format("FAILURE, (~p,~p)~n expected: ~p~n      got: ~p~n",[Spec,Dist,Exp,Got]),!,fail)),
-	fail.
-go.
+:- multifile user:term_expansion/6.
+user:term_expansion(Term1, Layout, Ids, Term2, Layout, [pct_token|Ids]) :-
+	nonmember(pct_token, Ids),
+	prolog_load_context(module,Module),
+	(current_predicate(expand_generator_term/3)-> % avoid strange error msg when loading this module
+	    expand_generator_term(Term1,Module,Term2),
+	    true).
 
 
-
-
+%%%
+%%% Unit test
+%%%
 :- begin_tests(percent).
 
-pev(Spec,Spec,F) :- percent(_,Spec,Fx), Fx = percent:eval(F,_).
-pem(Spec,Spec,F) :- percent(_,Spec,Fx), Fx = percent:F.
+rg(From,To,V) :- V >= From, V =< To.
 
+% ?? Spider generates an error for this next line, so commented out.
+% The second arg is meta-predicate, but if (X=5, percent(A,X)) works why shouldn't this?
+% Anyway, it's not really a useful case so it doesn't much matter -bpm2Jun13
+%test(basic,[true(Rez=5)]) :- percent(Rez,5).
+test(basic,[true(Rez=a)]) :- percent(Rez,a).
+test(basic,[true(Rez=a)]) :- percent(Rez,[a]).
 
-test(L,[true(Rez=dist(structfixed,1,100,x(a)))]) :- pev([a],L,Rez).
-test(L,[true(Rez=dist(structfixed,1,100,x(a)))]) :- pev([a:100],L,Rez).
-test(L,[true(Rez=dist(structfixed,2,100,x(a,b)))]) :- pev([a,b],L,Rez).
-test(L,[true(Rez=dist(structfixed,2,100,x(a,b)))]) :- pev([a:50,b],L,Rez).
-test(L,[true(Rez=dist(structfixed,2,100,x(b,a)))]) :- pev([a,b:50],L,Rez).
-test(L,[true(Rez=dist(structfixed,2,100,x(a,b)))]) :- pev([a:50,b:50],L,Rez).
-test(L,[true(Rez=dist(structfixed,9,100,x(a,a,a,a,a,b,b,b,b)))]) :- pev([a:50,b:40],L,Rez).
-test(L,[true(Rez=dist(structfixed,5,100,x(a,a,a,a,b)))]) :- pev([a:80,b],L,Rez).
-test(L,[true(Rez=dist(structfixed,5,100,x(a,a,b,b,c)))]) :- pev([a:40,b:40,c],L,Rez).
-test(L,[true(Rez=dist(structfixed,31,100,x(a,a,a,a,a,a,a,a,a,a,a,a,a,b,b,b,b,b,b,b,c,c,c,c,c,c,c,c,c,c,c)))]) :- pev([a:13,b:7,c:11],L,Rez).
-test(L,[true(Rez=
-          dist(structfixed,100,100,
-		    x(a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,
-		      b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b)))]) :- pev([a:51,b],L,Rez).
+test(list,[true(member(Rez,[a]))]) :- percent(Rez,[a]).
+test(list,[true(member(Rez,[a,b]))]) :- percent(Rez,[a,b]).
+test(list,[true(member(Rez,[a,b,c,d,e,f]))]) :- percent(Rez,[a,b,c,d,e,f]).
+test(list,[true(member(Rez,[a]))]) :- percent(Rez,[a:100]).
+test(list,[true(member(Rez,[a,b]))]) :- percent(Rez,[a:50,b:50]).
+test(list,[true(member(Rez,[a,b,c,d,e,f]))]) :- percent(Rez,[a:40,b:20,c:30,d,e,f]).
+test(list,[true((Rez1=a;Rez2=b))]) :- percent(Rez1,[a:99,z]), percent(Rez2,[b:99,z]).
+test(basic,[true(Rez=a)]) :- percent(Rez,[a:100]).
 
-test(L,[true(Rez=dist(structfixed,1,100,x(pct(_,_))))]) :- pev([5..6],L,Rez).
-test(L,[true(Rez=dist(structfixed,5,100,x(pct(V,prandom(5,6,V)),pct(V,prandom(5,6,V)),pct(V,prandom(5,6,V)),pct(V,prandom(5,6,V)),d)))]) :- pev([5..6:80,d],L,Rez).
+test(range,[true(rg(1,5,Rez))]) :- percent(Rez,1..4).
+test(range,[true(rg(1,5,Rez))]) :- percent(Rez,[1..4]).
+test(range,[true(rg(0,9,Rez))]) :- percent(Rez,1..avg(8)..9).
+test(range,[true(member(Rez,[1,3,5]))]) :- percent(Rez,1..step(2)..5).
+test(range,[true(member(Rez,[1,3,4,5]))]) :- percent(Rez,[1,3..5]).
 
+test(date_range,true(member(Rez,[1-feb-2011,2-feb-2011]))) :-
+	percent(Rez1,[1-feb-2011..2-feb-2011]),
+	idate(Rez,Rez1).
+test(date_range,true(member(Rez,[1-feb-2011,2-feb-2011]))) :-
+	percent(Rez1,[1-feb-2011..days(2)]),
+	idate(Rez,Rez1).
 
-test(L,[true(Rez=Exp)]) :-
-	Exp=multi(exec(_A,eval(dist(structfixed,2,100,x(1,2)),_B)),_C,_X,eval(dist(structfixed,2,100,x(a,b)),_D)),
-	pem(fn(length([1,2]),+(member(_,[a,b]))),L,Rez).
-test(L,[true(Rez=Exp)]) :-
-	Exp=multi(exec(_A,eval(dist(structfixed,2,100,x(1,2)),_B)),_C,_X,eval(dist(structfixed,2,100,x(a,b)),_D)),
-	pem(fn(length([1,2]),+percent(_,[a,b])),L,Rez).
-%test(L,[true(Rez=Exp)]) :-
-%	Exp=multi(exec(_A,eval(dist(structfixed,2,100,x(1,2)),_A)),_B,X,eval(dist(structfixed,2,100,x(a,b)),_B)),
-%	pev(fn(length([1,2]),+percent(_,[500..600])),L,Rez).
-%test(L,[true(Rez=blue)]) :- pev(fn(length([1:80,2:15,3,4,5]),+percent(_,[500..600])),L,Rez).
+test(list_fn,[true(maplist(rg(1,5),Rez)),true(length(Rez,3))]) :- percent(Rez,bag(3,1..5)).
+test(list_fn,[true(maplist(rg(1,5),Rez))]) :- percent(Rez,bag(3,[4,3,2])).
+test(list_fn,[exception(expr_error(list_length_not_integer,_,_))]) :- percent(_,bag(a,1..5)).
+
+test(bag,true(X=[a,a])) :- percent(X,bag(2,[a])).
+test(set,[exception(impractical_expr(_))]) :- percent(_,set(2,[a])).
+test(kit,true(X=[a])) :- percent(X,kit(1,[a])).
+test(kit,true(X=[a])) :- percent(X,kit(2,[a])).
+
+test(pred,true(member(Rez,[a,b,c]))) :- percent(Rez,:foo(_)).
+test(pred,true(member(Rez,[[a],[b],[c],[a,b],[a,c],[b,c],[a,a],[b,b],[c,c],[b,a],[c,a],[c,b]]))) :- percent(Rez,bag([1,2],:foo(_))).
+test(pred,true(member(Rez,[[a],[b],[c],[a,b],[a,c],[b,a],[b,c],[c,a],[c,b]]))) :- percent(Rez,set([1,2],:foo(_))).
+
+test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[d]+ :foo(_)).
+test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[a,d]+ :foo(_)).
+test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[a:80,d]+ :foo(_)).
+
+test(prepare,true(member(Rez,[a,b,c]))) :-
+	prepare_percent([a:80,b,c],Prep),
+	percent(Rez,Prep).
+
+foo(a).
+foo(b).
+foo(c).
 
 
 :- end_tests(percent).

@@ -141,9 +141,9 @@ days_between_dates(Date1,Date2,DiffInDays) :-
 	
 idate(Day-Month-Yr,Date) :-
 	(var(Date)->(D1=1,D2=1,D3=1);(D1=_,D2=_,D3=_)),
-	month(Month,Mx,Max),
-	between(1,Max,Day),
+	(integer(Month)->Month=Mx;month(Month,Mx,_)),
 	datime(Date,datime(Yr,Mx,Day,D1,D2,D3)).
+
 
 month(jan,1,31).
 month(feb,2,28).

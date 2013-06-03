@@ -62,7 +62,7 @@ user:file_search_path(ruge,'c:/some/where').
 :- include(ruge(common)).
         </source>
         <p>In order to avoid hard-coding the path in Prolog code, the path can be retrieved from the environment
-        or as a -DRUGE_HOME=path argument on the command line.</p>
+        or as a command-line argument of the form -DRUGE_HOME=path.</p>
 		<source>
 user:file_search_path(ruge,'$RUGE_HOME').
 :- include(ruge(common)).
