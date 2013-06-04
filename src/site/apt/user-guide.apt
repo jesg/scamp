@@ -222,11 +222,53 @@ yes
 +------------------------------------------+  
 
 
-
 Formatting
+
+  The default output format is simply the Prolog terms themselves, but often an alternative format is desired that 
+can be consumed by non-Prolog applications. Currently the alternatives are csv (comma-seperate-value) or xml, e.g.:
+
++------------------------------------------+  
+| ?- store(csv,gen(message)).
+[RUGE INFO] "store" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+message,hello
+message,world
+message,out
+message,there
+[RUGE INFO] Execution summary: 4 lines in 0.001 seconds written to stdout
+yes
++------------------------------------------+  
+
+  Sometimes it is useful to work with complex terms that must be formatted a certain way. An example is email.
+The following example adds an email/2 argument to message, and then defines how to format it using expose_term/3.
+RUGE discovers the latter when formatting and uses it to construct arguments to Prolog's built-in format/2:
+
++------------------------------------------+  
+message(hello,email(groucho,yahoo)).
+message(world,email(harpo,gmail)).
+message(out,email(chico,hotmail)).
+message(there,email(zeppo,aol)).
+
+expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
++------------------------------------------+  
+
+  The formatting now appears as follows:
+
++------------------------------------------+  
+| ?- store(csv,gen(message)).
+[RUGE INFO] "store" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+message,hello,groucho@yahoo.com
+message,world,harpo@gmail.com
+message,out,chico@hotmail.com
+message,there,zeppo@aol.com
+[RUGE INFO] Execution summary: 4 lines in 0.002 seconds written to stdout
+yes
++------------------------------------------+  
+
 
 
 File Output
+
+
 
 
 
