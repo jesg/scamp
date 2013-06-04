@@ -153,8 +153,80 @@ yes
 
   Note that percent/2 by itself does <not> repeat on backtracking. It must be called anew every time a value is to be generated.
   
+
+More on Generation
+
+  The preceding examples have included a user-defined generation loop. In practice, a number of other implementation considerations 
+can sometimes be tedious to manage by hand. As an alternative, RUGE provides its own generation loop. All you have
+to do is provide the generation predicates.
+
+  Remove the gen1 predicate from the previous examples, and add a few more clauses, so that the code is simply as follows:
+
++------------------------------------------+
+message(hello).
+message(world).
+message(out).
+message(there).
++------------------------------------------+
+
+  The primary way to invoke the RUGE generation loop is to call gen/1 predicate, naming the targeted generation rule:
+
++------------------------------------------+
+| ?- gen(message).
+[RUGE INFO] "gen" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+message(hello).
+message(world).
+message(out).
+message(there).
+[RUGE INFO] Execution summary: 4 lines in 0.001 seconds written to stdout
+yes
++------------------------------------------+
+
+  A fixed number of answers can be requested. This assumes the target predicate
+can generate at least that many, so it is more a matter of asking for a maximum:
+  
++------------------------------------------+  
+  | ?- first(3,gen(message)).
+[RUGE INFO] "first" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+message(hello).
+message(world).
+message(out).
+[RUGE INFO] Execution summary: 3 lines in 0.001 seconds written to stdout
+yes
++------------------------------------------+  
+
+
+  Or to sort by a particular column (start counting at 1):
+
++------------------------------------------+  
+| ?- csort(1,gen(message)).
+[RUGE INFO] "csort" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+message(hello).
+message(out).
+message(there).
+message(world).
+[RUGE INFO] Execution summary: 4 lines in 0.001 seconds written to stdout
+yes
++------------------------------------------+  
+
+  Or to sort then select a fixed quantity:
+
++------------------------------------------+  
+| ?- first(3,csort(1,gen(message))).
+[RUGE INFO] "first" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+message(hello).
+message(out).
+message(there).
+[RUGE INFO] Execution summary: 3 lines in 0.001 seconds written to stdout
+yes
++------------------------------------------+  
+
+
+
 Formatting
 
+
+File Output
 
 
 

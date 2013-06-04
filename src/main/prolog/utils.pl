@@ -97,8 +97,10 @@ date_plus(Date,Plus,Date1) :-
 	date_operand_to_seconds(Plus,Ps),
 	Date1 is Date + Ps.
 
+blue.
+
 date_operand_to_seconds(hour(Hour),S) :- date_operand_to_seconds(hours(Hour),S).
-date_operand_to_seconds(hours(Hours),S) :- S is Hours * 3600.
+date_operand_to_seconds(hours(Hours),S) :- (var(Hours)->blue;true),S is Hours * 3600.
 date_operand_to_seconds(day(Day),S) :- date_operand_to_seconds(days(Day),S).
 date_operand_to_seconds(days(Days),S) :- S is Days * 86400. % 60 * 60 * 24.
 date_operand_to_seconds(week(Week),S) :- date_operand_to_seconds(weeks(Week),S).

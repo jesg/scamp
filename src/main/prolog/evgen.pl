@@ -13,7 +13,7 @@
 % See the License for the specific language governing permissions and
 % limitations under the License.
 %-------------------------------------------------------------------------------
-:- module(evgen,[gen/1,gen/2,gen/3,gen/4,gen2/2,store/2,buffer/1,csort/2,follow/3,seq/1,stabilize/3,filter/4,
+:- module(evgen,[gen/1,store/2,buffer/1,csort/2,follow/3,seq/1,stabilize/3,filter/4,first/2,
 		 findone/1, findone/2,tracker/3,track/2,tracked/2]).
 :- use_module(library(between)).
 :- use_module(library(lists)).
@@ -25,9 +25,13 @@
 :- use_module(typer).
 :- use_module(utils).
 
+% File: evgen.pl
+% Author: Brendan McCarhty
+
+
 :- op(700,xfx,as).
-:- op(500,xfy,generate).
-:- op(1150,fx,generate).
+%:- op(500,xfy,generate).
+%:- op(1150,fx,generate).
 :- op(400,xf,k). % thousand
 :- op(400,xf,m). % million
 :- op(400,xf,b). % billion
@@ -35,6 +39,8 @@
 
 :- meta_predicate findone(2).
 :- meta_predicate findone(2,+).
+
+info(S,Args) :- write('[RUGE INFO] '), format(S,Args).
 
 findone(T) :- findone(T,1000).
 findone(Mod:T,X) :- between(0,X,I), (I=:=X->(format("Warning: 'findone' attempts exceeded ~p without success: ~p~n",[X,T]), fail);true), Mod:T, !.
@@ -58,17 +64,6 @@ shorten(Max,Longer,Shorter) :-
 		shorten(M1,Ls,Ss))).
 
 
-:- meta_predicate tracker2(+,2,-).
-tracker2(Max,Mod:Id,tracker(Id,Mod,Max)) :- (Mod:bb_delete(Id,_)->true;true), Mod:bb_put(Id,tk(0,[])).
-tracked2(V,tracker(Id,Mod,Max)) :- Mod:bb_get(Id,tk(_Len,L)), head_member(V,L,0,Max).
-track2(V,tracker(Id,Mod,Max)) :-
-	Mod:bb_get(Id,tk(Len,Current)),
-	L1=[V|Current],
-	(Len > 100 ->
-	    first_n_members(L1,Max,L2,Len2);
-	    (L1=L2,Len2 is Len+1)),
-	Mod:bb_update(Id,_,tk(Len2,L2)).
-
 head_member(V,L,Max) :- head_member(V,L,0,Max).
 head_member(V,[Head|Tail],Pos,Max) :-
 	Pos < Max,
@@ -83,36 +78,12 @@ first_n_members([X|Xs],Max,Y,Len) :-
 	    (Y=[X|Ys],M1 is Max-1,first_n_members(Xs,M1,Ys,Lz),Len is Lz+1)).
 
 
-t1(Count) :- for(I,1,Count) do (tracker(2,foo,T), track(I,T), (tracked(q,T)->true;true)).
-t2(Count) :- for(I,1,Count) do (tracker2(2,foo,T), track2(I,T), (tracked2(q,T)->true;true)).
-
-gg(Count) :- utils:saytime(evgen:t1(Count)), utils:saytime(evgen:t2(Count)).
-
-
-% sort name vs. ord
-% sort ext vs. int
-% format
-% format customization
-% gen operator
-% composite keys
-% atom lhs (no first arg)
-% nox/index/ordex (investigate direct clause ref)
-% assertx that keeps those in sync
-% 'any' op; uses random then ordex then index
-% add total=X, in addition to index=X, that counts total output
-% report on total at end
-% limits / head
-
 
 
 %%%
 %%% Top-leval predicates
 %%%
 :- meta_predicate gen(2).
-:- meta_predicate gen(?,2).
-:- meta_predicate gen(?,?,2).
-:- meta_predicate gen(?,?,?,2).
-:- meta_predicate gen2(?,2).
 :- meta_predicate store(?,2).
 :- meta_predicate buffer(2).
 :- meta_predicate csort(+,2).
@@ -120,152 +91,103 @@ gg(Count) :- utils:saytime(evgen:t1(Count)), utils:saytime(evgen:t2(Count)).
 :- meta_predicate filter(+,2,+,2).
 :- meta_predicate seq(2).
 :- meta_predicate stabilize(+,+,2).
+:- meta_predicate first(+,2).
 
-tell_starting_from(Op) :- current_directory(D), format('[ruge INFO] : "~p" invoked from directory ~p~n',[Op,D]).
+tell_starting_from(Op) :- current_directory(D), info('"~p" invoked from directory ~p~n',[Op,D]).
 
-
-gen(Src) :- gen([],Src).
-gen(A1,Src) :-
-	(is_list(A1)->
-	    L=A1;
-	    L=[A1]),
-	gen2(L,Src).
-gen(A1,A2,Src) :- gen2([A1,A2],Src).
-gen(A1,A2,A3,Src) :- gen2([A1,A2,A3],Src).
-
-gen2(Args,Mod:Src) :-
-	tell_starting_from('gen'),
-	append(Args,[Src],Z),
-	Expr =.. [gen|Z],
-	expr_generator(Expr,Mod,Name,Gen,T),
+run_top(Mod,Expr) :-
+	functor(Expr,F,_),
+	tell_starting_from(F),
+	expr_generator(Expr,Mod,Name,Gen,T,Down),
 	current_output(Stream),
-	output(Stream,Mod,Name,Gen,T).
+	output(Stream,Down,Mod,Name,Gen,T).
+
+gen(Mod:Src) :- run_top(Mod,gen(Src)).
+
+first(N,Mod:Src) :- run_top(Mod,first(N,Src)).
+
+buffer(Mod:Src) :- run_top(Mod,buffer(Src)).
+
+seq(Mod:Src) :- run_top(Mod,seq(Src)).
+
+stabilize(Count,ConflictId,Mod:Src) :- run_top(Mod,stabilize(Count,ConflictId,Src)).
+
+csort(Column,Mod:Src) :- run_top(Mod,csort(Column,Src)).
+
+follow(LookAhead,Mod:Src,Follow) :- run_top(Mod,follow(LookAhead,Src,Follow)).
+
+filter(Kind,Mod:Pred,Len,Mod:Src) :- run_top(Mod,filter(Kind,Mod:Pred,Len,Src)).
 
 store(Dest,Mod:Src) :-
 	tell_starting_from('store'),	
-	expr_generator(Src,Mod,Name,Gen,T),
-	output(Dest,Mod,Name,Gen,T).
-
-buffer(Mod:Src) :-
-	tell_starting_from('buffer'),	
-	expr_generator(buffer(Src),Mod,Name,Gen,T),
-	current_output(Stream),
-	output(Stream,Mod,Name,Gen,T).
-
-seq(Mod:Src) :-
-	tell_starting_from('seq'),
-	expr_generator(seq(Src),Mod,Name,Gen,T),
-	current_output(Stream),
-	output(Stream,Mod,Name,Gen,T).
-
-stabilize(Count,ConflictId,Mod:Src) :-
-	tell_starting_from('stabliize'),
-	expr_generator(stabilize(Count,ConflictId,Src),Mod,Name,Gen,T),
-	current_output(Stream),
-	output(Stream,Mod,Name,Gen,T).
-
-csort(Column,Mod:Src) :- 
-	tell_starting_from('csort'),
-	expr_generator(csort(Column,Src),Mod,Name,Gen,T),
-	current_output(Stream),
-	output(Stream,Mod,Name,Gen,T).
-
-follow(LookAhead,Mod:Src,Follow) :-
-	tell_starting_from('follow'),
-	expr_generator(follow(LookAhead,Src,Follow),Mod,Name,Gen,T),
-	current_output(Stream),
-	output(Stream,Mod,Name,Gen,T).
-
-filter(Kind,Mod:Pred,Len,Mod:Src) :-
-	tell_starting_from('filter'),
-	expr_generator(filter(Kind,Mod:Pred,Len,Src),Mod,Name,Gen,T),
-	current_output(Stream),
-	output(Stream,Mod,Name,Gen,T).
+	expr_generator(Src,Mod,Name,Gen,T,Down),
+	output(Dest,Down,Mod,Name,Gen,T).
 
 
-% expr_generator(+Expr,+Module,?Name,?Generator,?GeneratedTerm)
+
+% expr_generator(+Expr,+Module,?Name,?Generator,?GeneratedTerm,?ControlArgs)
 % Generator can be called repeatedly, binding GeneratedTerm,
 % reflecting the intent of Expr. Name is the best guess for
 % a name that might be used as file name or module name for
 % buffering.
 %
-expr_generator(Expr,Mod,Name,Gen,T) :-
-	catch(expr(Expr,down(-1,[]),Mod,Name,Gen,T),
+expr_generator(Expr,Mod,Name,Gen,T,Down) :-
+	catch(expr(Expr,down(pl,-1,[]),Mod,Name,Gen,T,Down),
 	      Code,
 	      throw('ExprSyntaxError'(Code))).
 
-down(limit,down(Limit,_),Limit).
-down(peek,down(_,Peek),Peek).
+down(format,down(Fmt,_,_),Fmt).
+down(limit,down(_,Limit,_),Limit).
+down(peek,down(_,_,Peek),Peek).
 
-expr(Expr,Down,Mod,F,Gen,T) :-
-	(expr1(Expr,Down,Mod,F,Gen,T)->
+expr(Expr,Down,Mod,F,Gen,T,Down2) :-
+	(expr1(Expr,Down,Mod,F,Gen,T,Down2)->
 	    true;
 	    throw('SubExprFailed'(Expr))).
 
-% foo(X,Y)
-% generate foo(X,Y)
-% bar generate foo(X,Y)
-% N generate foo(X,Y)
-% bar(N) generate foo(X,Y)
-% bar(N,pos=P) generate foo(X,Y) :- get_mutble(V,P).
-% bar(N), pos=P generate foo(X,Y) :- get_mutble(V,P).
-
-% foo(X,Y)
-% ::foo(X,Y)
-% bar::foo(X,Y)
-% N::foo(X,Y)
-% bar(N)::foo(X,Y)
-% bar(N,pos=P)::foo(X,Y) :- get_mutble(V,P).
-% bar(N), pos=P::foo(X,Y) :- get_mutble(V,P).
-
-% 'bar::([InArgs],_Limit,Pos,foo(X,Y)) :- bar(InArgs,pos=P)::foo(X,Y).
-
-% 'bar::(bar,1,[InArgs],_Limit,Pos,T,(bar(InArgs,pos=P)::T)).
-
-% 'bar::(N,P,foo(X,Y)) 
-
-% '$grule'(Pred,Arity,InArgs,Limit,Index,Peek,Term,true),
-% '$grule'(template(template(A,B,C),B,C,D), 4, [E], _, _, _, template, F) :-
-% '$grule'(action, 1, [A], _, _, _, B, C) :-
-% call(user:'$grule'(template,_8036,_8087,_8088,_8089,_8090,_8091,false)).
-
-expr1(Gp,Down,Mod,Pred,xgen(Args,Pred,Arity,Down,Mod,T),T) :-
-	Gp =.. [gen|Z],
-	append(Args,[PredSpec],Z),
-	(PredSpec=Pred/Arity->true;PredSpec=Pred),
-	% Validate that a rule exists
-	Rx = Mod:'$grule'(Pred,Arity,_,_,_,_,_,false),  % TBD check for arity too
-      	current_predicate('$grule',Rx),
-	(Rx->true;throw('UnknownGeneratorRuleException'(PredSpec))).
-expr1(seq(Seq),Down,Mod,Name,(member(G,Gs),G),T) :-
+expr1(gen(Rule),Down,Mod,Pred,xgen(Args,Pred,Arity,Down,Mod,T),T,Down) :-
+	functor(Rule,Pred,Arity),
+	Rule =.. [Pred|Args],
+	(defined_rule(Mod,Pred,Arity,_,_,_,_,_,_)->   	% Validate that a rule exists here, before actual execution
+	    true;
+	    throw('UnknownGeneratorRuleException'(Pred/Arity))).
+expr1(seq(Seq),Down,Mod,Name,(member(G,Gs),G),T,Down) :-
 	plist(Seq,Down,Mod,Name,Gs,T).
-expr1(follow(LookAhead,SrcMain,Follow),Down,Mod,Name,xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T),T) :-
-	expr(SrcMain,Down,Mod,Name,Gm,Tm),
-	Down = down(Limit,Peek1),
-	Down2 = down(Limit,Peek2),
+expr1(follow(LookAhead,SrcMain,Follow),Down,Mod,Name,xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T),T,Down2) :-
+	expr(SrcMain,Down,Mod,Name,Gm,Tm,_),
+	Down = down(Fmt,Limit,Peek1),
+	Down2 = down(Fmt,Limit,Peek2),
 	plist(Follow,Down2,Mod,_Name,Gf,Tf).
-expr1(stabilize(Count,ConflictId,Src),Down,Mod,Name,stabilize(Count,Mod,ConflictId,BaseKey,PendingKey,Gen,St,T),T) :-
-	expr(Src,Down,Mod,Name,Gen,St),
+expr1(stabilize(Count,ConflictId,Src),Down,Mod,Name,stabilize(Count,Mod,ConflictId,BaseKey,PendingKey,Gen,St,T),T,Down) :-
+	expr(Src,Down,Mod,Name,Gen,St,_),
 	atom_concat(ConflictId,'_base',BaseKey),
 	atom_concat(ConflictId,'_pending',PendingKey).
-expr1(head(Limit,Expr),down(_,Peek),Mod,Name,Gen,T) :- expr(Expr,down(Limit,Peek),Mod,Name,Gen,T).
-expr1(buffer(Src),Down,Mod,Name,evgen:xbuffer(Mod,Name,Gen,St,T),T) :- expr(Src,Down,Mod,Name,Gen,St).
-expr1(load(Src),_,Mod,Src,evgen:load_thru(Stream,Mod,Type,T),T) :-
+expr1(first(Limit,Expr),down(Fmt,_,Peek),Mod,Name,Gen,T,Down2) :-
+	Down2 = down(Fmt,Limit,Peek),
+	expr(Expr,Down2,Mod,Name,Gen,T,Down2).
+expr1(buffer(Src),Down,Mod,Name,evgen:xbuffer(Mod,Name,Gen,St,T),T,Down) :- expr(Src,Down,Mod,Name,Gen,St,_).
+expr1(load(Src),Down,Mod,Src,evgen:load_thru(Stream,Mod,Type,T),T,Down) :-
 	open_dest(Src,'should_not_happen',Type,Stream).
-expr1(store(Dest,Src),Down,Mod,Name,store_thru(Type,Stream,Mod,Gen,St,T),T) :-
-	expr(Src,Down,Mod,_,Gen,St),
-	open_dest(Dest,Name,Type,Stream).
-expr1(filter(Kind,Pred,Len,Src),Down,Mod,Name,xfilter(Kind,Pred,Len,Mod,Gen,St,T),T) :-
-	expr(Src,Down,Mod,Name,Gen,St).
-expr1(csort_tbd_needed(Column,Src),Down,Mod,Name,ld(F2,T),T) :-
-	expr(Src,Down,Mod,Name,Gen,St),
+expr1(store(Dest,Src),Down,Mod,Name,store_thru(Type,Stream,Mod,Gen,St,T),T,Down2) :-
+	expr(Src,Down,Mod,_,Gen,St,_),
+	open_dest(Dest,Name,Type,Stream),
+	(set_format(Dest,Down,Down2)->
+	    true;
+	    throw(invalid_format(Dest))).
+expr1(filter(Kind,Pred,Len,Src),Down,Mod,Name,xfilter(Kind,Pred,Len,Mod,Gen,St,T),T,Down) :-
+	expr(Src,Down,Mod,Name,Gen,St,_).
+expr1(csort_tbd_needed(Column,Src),Down,Mod,Name,ld(F2,T),T,Down) :-
+	expr(Src,Down,Mod,Name,Gen,St,_),
 	open(temp('devc_sort'),write,Stream,[if_exists(generate_unique_name)]),
 	stream_property(Stream, file_name(TempFileName)),
 	format('Logging to ~a~n', [TempFileName]),
-	output(Stream,Mod,Name,Gen,St),
+	output(Stream,Down,Mod,Name,Gen,St),
 	exec_sort(F2,Column,F2).
-expr1(csort(Column,Src),Down,Mod,Name,xsort(Column,Gen,St,Down,T),T) :-
-	expr(Src,Down,Mod,Name,Gen,St).
+expr1(csort(Column,Src),Down,Mod,Name,xsort(Column,Gen,St,Down,T),T,Down) :-
+	expr(Src,Down,Mod,Name,Gen,St,_).
+
+set_format(file(_,Fmt),down(_,L,P),down(Fmt,L,P)) :- valid_format(Fmt).
+set_format(Fmt,down(_,L,P),down(Fmt,L,P)) :- valid_format(Fmt).
 
 
 xsort(Column,Gen,St,_Down,T) :-
@@ -301,7 +223,8 @@ gen_head_use_key(Key,_,Mod,_,_,Peek) :-
 	
 
 xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T) :-
-	percent(Alt,[fail|Gf],AltGen),	
+%	percent(Alt,[fail|Gf],AltGen),		
+	prepare_percent([fail|Gf],AltGen),	
 	Key = follow_key, % TBD recursive
 	Mod:bb_put(Key,[]),
 	Gm,
@@ -314,7 +237,7 @@ xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T) :-
 	Mod:bb_put(Key,[Tm|H]),
 	append(Peek1,Peek,Peek2),
 	(NextUp=T;
-	    (AltGen,
+	    (percent(Alt,AltGen),
 		Alt \== fail,
 		once(Alt),
 		Tf=T)).
@@ -322,7 +245,7 @@ xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T) :-
 plist([],_,_,_,[],_).
 plist([X|Xs],Down,Mod,Name,[G|Gs],T) :-
 	(X=X1:P->G=G1:P;(X=X1,G=G1)),
-	expr(X1,Down,Mod,Name,G1,T),
+	expr(X1,Down,Mod,Name,G1,T,_),
 	plist(Xs,Down,Mod,_,Gs,T).
 
 
@@ -380,15 +303,24 @@ stabilize_push(Mod,ConflictId,BaseKey,PendingKey,ConflictValues,Next,Term) :-
 xgen(InArgs,Pred,Arity,Down,Mod,Term) :-
 	down(limit,Down,Limit),
 	down(peek,Down,Peek),
-	Rx = Mod:'$grule'(Pred,Arity,InArgs,Limit,Index,Peek,Term,true),
-      	current_predicate('$grule',Rx),
+	defined_rule(Mod,Pred,Arity,InArgs,Limit,Index,Peek,Term,Invocation),
 	statistics(walltime,[UniqueValue,_]),
 	retractall(gen_counter(UniqueValue,_)),
 	assert(gen_counter(UniqueValue,0)),  % TDB max/limit broken
-	Rx,
+	Mod:Invocation,
 	retract(gen_counter(UniqueValue,Index)),
 	NextIndex is Index + 1,
 	assert(gen_counter(UniqueValue,NextIndex)).
+
+
+defined_rule(Mod,Pred,Arity,InArgs,Limit,Index,Peek,Term,Invocation) :-
+	Rx = Mod:'$grule'(Pred,Arity,InArgs,Limit,Index,Peek,Term,Invocation),
+      	current_predicate('$grule',Rx),
+	Rx.
+defined_rule(Mod,Pred,0,[],_,_,_,T,Mod:T) :-
+	current_predicate(Mod:Pred/Arity),
+	length(Args,Arity),
+	T =.. [Pred|Args].
 
 
 % bind_gen_args(+ParametersFromRule,+InArgsFromFormula,?Limit,?Index,?Peek)
@@ -411,8 +343,6 @@ xbuffer(Mod,_Name,Gen,T,T) :-
 	AssertMod = Mod,  % TBD
 	xassert(Mod,AssertMod,T).
 
-blue_doggie.
-
 store_thru(Type,Stream,_Mod,Gen,T,T) :-
 	Gen,
 	format_type(Type,T,Stream).
@@ -422,8 +352,9 @@ load_thru(Stream,_Mod,Type,T) :- read_next(Type,Stream,T).
 load_thru(Stream,_,_,_) :- close(Stream), fail.
 
 
+open_dest(Fmt,_,Fmt,Stream) :- valid_format(Fmt), current_output(Stream).
 open_dest(file(Type),Name,Type,Stream) :- open_name_type(Name,Type,Stream).
-open_dest(file(Type,Name),_Name,Type,Stream) :- open_name_type(Name,Type,Stream).
+open_dest(file(Name,Type),_Name,Type,Stream) :- open_name_type(Name,Type,Stream).
 
 open_name_type(Name,Type,Stream) :-
 	Dir = 'generated',
@@ -436,30 +367,42 @@ open_name_type(Name,Type,Stream) :-
 	atom_concat(F3,Type,Fn),
 	open(Fn,write,Stream).
 
-output(S,Mod,_,Gen,T) :- functor(S,'$stream',_), wgen_and_close(Gen,T,Mod,csv,S).
-output(D,Mod,Name,Gen,T) :- open_dest(D,Name,Type,Stream), wgen_and_close(Gen,T,Mod,Type,Stream).
+output(S,Down,Mod,_,Gen,T) :- functor(S,'$stream',_), down(format,Down,Fmt), wgen_and_close(Gen,T,Mod,Fmt,S,Down).
+output(D,Down,Mod,Name,Gen,T) :- open_dest(D,Name,Type,Stream), wgen_and_close(Gen,T,Mod,Type,Stream,Down).
 
-wgen_and_close(Gen,T,Mod,Type,Stream) :-
+wgen_and_close(Gen,T,Mod,Type,Stream,Down) :-
 	(stream_property(Stream, file_name(Fn))->true;Fn=''),
 	statistics(walltime,[T1,_]),
-	call_cleanup(wgen(Gen,T,Mod,Type,Stream),
+	Key = '$LimitCounter',
+	call_cleanup(wgen(Gen,T,Key,Mod,Type,Stream,Down),
 		     (stream_property(Stream,interactive)->true;close(Stream))),
 	statistics(walltime,[T2,_]),
 	WallTimeSeconds is (T2 - T1) / 1000,
 	format_time(WallTimeSeconds,Sf),
-	(Fn=''->
-	    format("Time ",[]);
-	    format("Output to ~a ",[Fn])),
-	format("~s~n",[Sf]).	
+	bb_get(Key,NumberOutput),
+	(Fn=''->Where=stdout;Where=Fn),
+	(NumberOutput=1->What=line;What=lines),
+	info("Execution summary: ~p ~a in ~s written to ~p",[NumberOutput,What,Sf,Where]).
 
 
-wgen(Gen,T,Mod,Type,Stream) :-
+wgen(Gen,T,Key,Mod,Type,Stream,down(_,Limit,_)) :-
+	bb_put(Key,0),
 	Gen,
-	format_type(Type,T,Mod,Stream),
-	fail.
-wgen(_,_,_,_,_).
+	bb_get(Key,N),
+	((Limit < 0 ; N < Limit)->
+	    (format_type(Type,T,Mod,Stream),
+		N1 is N+1,
+		bb_put(Key,N1),
+		fail);
+	    !).
+wgen(_,_,_,_,_,_,_).
 
 
+
+valid_format(pl).
+valid_format(csv).
+
+format_type(pl,T,_Mod,Stream) :- writeq(Stream,T), write(Stream,'.'), nl.
 format_type(csv,T,Mod,Stream) :- format_csv(',',T,Mod,Stream).
 format_type(csv(Sep),T,Mod,Stream) :- format_csv(Sep,T,Mod,Stream).
 
@@ -483,7 +426,8 @@ format_csv_items(Pos,Sep,F,Arity,T,Mod,Stream,Spill) :-
 		format_csv_items(Pos1,Sep,F,Arity,T,Mod,Stream,Sz))).
 	
 format_csv_item(Enc,Ord,Value,Mod,Stream,S1,S2) :-
-	(Mod:'$gfd'(_,Enc,_Arity,Ord,Type,_Inverse,_Min,Max,_Kx,_,_,_)->
+	((current_predicate(Mod:'$gfd'/11),
+	  Mod:'$gfd'(_,Enc,_Arity,Ord,Type,_Inverse,_Min,Max,_Kx,_,_,_))->
 	    true;
 	    (Max=1,Type=term)),
 	((is_list(Value), Max \== 1) ->
@@ -496,7 +440,8 @@ format_single_csv_item(date,_,Stream,V) :- write(Stream,V).
 format_single_csv_item(string,_,Stream,V) :- is_list(V)->format(Stream,"~s",[V]);write(Stream,V).
 format_single_csv_item(int,_,Stream,V) :- write(Stream,V).
 format_single_csv_item(term,Mod,Stream,V) :-
-	(Mod:expose_term(V,Format,Args)->
+	((current_predicate(Mod:expose_term/3),
+	  Mod:expose_term(V,Format,Args))->
 	    format(Stream,Format,Args);
 	    write(Stream,V)).
 
@@ -513,32 +458,42 @@ format_csvs([V|Vs],First,Type,Mod,Stream) :-
 	format_csvs(Vs,false,Type,Mod,Stream).
 
 
-generation_rule_head((N generate P::G),N,P,1,G).
-generation_rule_head((N generate P),N,P,A,G) :- functor(P,G,A).
-generation_rule_head((generate P::G),[],P,1,G).
-generation_rule_head((generate P),[],P,A,G) :- functor(P,G,A).
-
 :-set_prolog_flag(discontiguous_warnings,off).
 
 :- multifile user:term_expansion/6.
 :- discontiguous user:term_expansion/6.
 
-user:term_expansion(Term,Layout,Ids,[Access,Term],Layout,[Token|Ids]) :-
+% Formats that must be handled:
+%
+%  * bar::foo(X,Y)
+%  * N::foo(X,Y)
+%  * bar(N)::foo(X,Y)
+%  * bar(N), pos=P::foo(X,Y) :- get_mutble(V,P).
+%
+user:term_expansion(Rule,Layout,Ids,[Access,Rule],Layout,[Token|Ids]) :-
 	Token=gen_token,
-	nonmember(Token, Ids),
-	(Term=(Th:-_)->true;Term=Th),
-%        (generation_rule_head(Th,Params,CalledByFunctor,Rule)->true;fail),
-        generation_rule_head(Th,Params,F,A,Rule),
-	!,
-        listify(Params,Ps),
-%        functor(Rule,F,A),
-%	(Th=(Parameters generate Rule)->listify(Parameters,Ps);Th=(generate Rule)),
-%	(Rule='::'(CalledByFunctor,GenTerm)->
-%         functor(GenTerm,F,A);
-%	 (functor(Rule,F,A), CalledByFunctor=F)),     
-	bind_gen_args(Ps,Args,Limit,Index,Peek),
-	Access = ('$grule'(F,A,Args,Limit,Index,Peek,Rule,Exec) :- (Exec->Th;true)).
+	nonmember(Token,Ids),
+	(Rule=(Invocation:-_)->true;Rule=Invocation),
+	Invocation = (Call :: Term),
+	expand_rule(Call,Term,Access).
 
+
+rule_format(V,As,Az,Ks,Ks,_) :- var(V), !, append(As,[V],Az).
+rule_format(X=Y,As,As,Ks,[X=Y|Ks],_) :- !.
+rule_format((X,Y),As,Az,Ks,Kz,F) :-
+	!,
+	rule_format(X,As,A1,Ks,K1,F),
+	rule_format(Y,A1,Az,K1,Kz,F).
+rule_format(T,_,Az,K,K,F) :-	T =.. [F|Az].
+
+expand_rule(Call,GenTerm,Access) :-
+	once(rule_format(Call,[],Args,[],Kws,Pred)),
+	length(Args,Arity),
+	(var(Pred)->
+	    functor(GenTerm,Pred,_Arity);
+	    true),
+	bind_gen_args(Kws,_,Limit,Index,Peek),
+	Access = '$grule'(Pred,Arity,Args,Limit,Index,Peek,GenTerm,(Call::GenTerm)).
 
 listify(X,Y) :-
 	(is_list(X)->
@@ -549,12 +504,50 @@ listify(X,Y) :-
 
 
 
-
 :- begin_tests(evgen).
 
 test(xyz,[true(Rez=[a,b,c]),nondet]) :- gen_head(3,evgen,member(T,[a,b,c,d,e]),T,Rez).
 test(xyz,[true(Rez=[a,b,c]),nondet]) :- gen_head(5,evgen,member(T,[a,b,c]),T,Rez).
 test(xyz,true(Rez=[[a,b],[b,c],[c]])) :- findall(L,gen_head(2,evgen,member(T,[a,b,c]),T,L),Rez).
 test(xyz,true(Rez=[[a,b,c],[b,c],[c]])) :- findall(L,gen_head(8,evgen,member(T,[a,b,c]),T,L),Rez).
+
+
+test(xrule1,true(Rez=Exp)) :-
+	Term = bar(_,_),
+	Rule = (foo::Term),
+	Exp = '$grule'(foo,0,[],_Limit,_Index,_Peek,Term,Rule),
+	expand_term(Rule,[Rez|_]).
+test(xrule2,true(Rez=Exp)) :-
+	Term = bar(_,_),
+	Rule = (foo(x)::Term),
+	Exp = '$grule'(foo,1,[x],_Limit,_Index,_Peek,Term,Rule),
+	expand_term(Rule,[Rez|_]).
+test(xrule3,true(Rez=Exp)) :-
+	Term = bar(_,_),
+	Peek = y,
+	Rule = (foo(x),peek=Peek::Term),
+	Exp = '$grule'(foo,1,[x],_Limit,_Index,Peek,Term,Rule),
+	expand_term(Rule,[Rez|_]).
+test(xrule4,true(Rez=Exp)) :-
+	Term = bar(_,_),
+	Rule = (Var::Term),
+	Exp = '$grule'(bar,1,[Var],_Limit,_Index,_Peek,Term,Rule),
+	expand_term(Rule,[Rez|_]).
+test(xrule5,true(Rez=Exp)) :-
+	Term = bar(_,_),
+	Peek = y,
+	Rule = (peek=Peek::Term),
+	Exp = '$grule'(bar,0,[],_Limit,_Index,Peek,Term,Rule),
+	expand_term(Rule,[Rez|_]).
+test(xrule6,true(Rez=Exp)) :-
+	Term = bar(_,_),
+	Peek = y,
+	Index = z,
+	Rule = (peek=Peek,index=Index::Term),
+	Exp = '$grule'(bar,0,[],_Limit,Index,Peek,Term,Rule),
+	expand_term(Rule,[Rez|_]).
+
+
+
 
 :- end_tests(evgen).

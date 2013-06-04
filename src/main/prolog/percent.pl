@@ -101,7 +101,9 @@ peval(set(LenExpr,ListExpr),Mod,V) :-
 	    eval_set(Len,ListExpr,Mod,V)).
 peval(kit(LenExpr,ListExpr),Mod,V) :-
 	eval_length(LenExpr,Mod,Len),
-	expand_expr(kit,Len,ListExpr,Mod,List),
+	(expand_expr(kit,Len,ListExpr,Mod,List)->
+	    true;
+	    throw(impractical_expr(expr_expansgion_too_large_use_set_instead))),
 	length(List,DomainLen),
 	KitLen is min(Len,DomainLen),
 	KitLen > 0,
@@ -109,8 +111,8 @@ peval(kit(LenExpr,ListExpr),Mod,V) :-
 peval(arg(S),Mod,V) :-
 	functor(S,_,A),
 	A1 is A + 1,
-	random(1,A1,X),
-	arg(X,S,V1),
+	random(1,A1,R),
+	arg(R,S,V1),
 	peval(V1,Mod,V).
 
 % prepare_percent(+Expr,?PreparedExpr)
@@ -137,7 +139,7 @@ prep([X|R],_Mod,arg(V)) :-
 prep(bag(Lx,Ex),Mod,bag(Ly,Ey)) :-
     prep(Lx,Mod,Ly),
     prep(Ex,Mod,Ey).
-prep(set(Lx,Ex),Mod,kit(Ly,Ey)) :-
+prep(set(Lx,Ex),Mod,set(Ly,Ey)) :-
     prep(Lx,Mod,Ly),
     prep(Ex,Mod,Ey).
 prep(kit(Lx,Ex),Mod,kit(Ly,Ey)) :-
@@ -454,8 +456,13 @@ test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[d]+ :foo(_)).
 test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[a,d]+ :foo(_)).
 test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[a:80,d]+ :foo(_)).
 
+test(arg,true(member(Rez,[a,b,c,d]))) :- percent(Rez,arg(x(a,b,c,d))).
+
 test(prepare,true(member(Rez,[a,b,c]))) :-
 	prepare_percent([a:80,b,c],Prep),
+	percent(Rez,Prep).
+test(prepare,true((length(Rez,Len),Len > 0, Len =< 4))) :-
+	prepare_percent(set([1:85,2:10,3,4],0..999),Prep),
 	percent(Rez,Prep).
 
 foo(a).

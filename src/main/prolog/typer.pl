@@ -17,7 +17,8 @@
 :- use_module(library(between)).
 :- use_module(library(random)).
 
-:- op(550,xfy,'::').
+%:- op(750,xfy,'::').
+:- op(1050,xfy,'::').
 :- op(500,xfy,'=>').
 
 :-set_prolog_flag(discontiguous_warnings,off).
@@ -25,6 +26,7 @@
 
 interface_expansion(Term,Meta) :- 
 	Term = (Ifc :: P),
+	nonvar(Ifc),
 	functor(Ifc,interface,_),  % Future: other interface attributes
 	functor(P,F,Arity),
 	findall(M,(between(1,Arity,Pos),expand_interface(Arity,Pos,P,F,M)),FieldMeta),
