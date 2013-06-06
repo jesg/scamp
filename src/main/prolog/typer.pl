@@ -17,15 +17,14 @@
 :- use_module(library(between)).
 :- use_module(library(random)).
 
-%:- op(750,xfy,'::').
-:- op(1050,xfy,'::').
+:- op(1150,fx,interface).
 :- op(500,xfy,'=>').
 
 :-set_prolog_flag(discontiguous_warnings,off).
 
 
 interface_expansion(Term,Meta) :- 
-	Term = (Ifc :: P),
+	Term = (interface P),
 	nonvar(Ifc),
 	functor(Ifc,interface,_),  % Future: other interface attributes
 	functor(P,F,Arity),
@@ -146,7 +145,8 @@ xassert(DefMod,AssertMod,Term) :-
 % TBD dynamic
 
 update_indexes(DefMod,AssertMod,Term,Pos,EncType,Ref) :-
-	(DefMod:'$gfd'(_FdName,EncType,_Arity,Pos,_FdType,_Inverse,_Min,_Max,_KeyIndex,Countx,Index,Ordex)->
+	((current_predicate(DefMod:'$gfd'/12),
+	  DefMod:'$gfd'(_FdName,EncType,_Arity,Pos,_FdType,_Inverse,_Min,_Max,_KeyIndex,Countx,Index,Ordex))->
 	    updx(AssertMod,Term,Pos,Countx,Index,Ordex,Ref);
 	    true).
 

@@ -23,8 +23,10 @@
 
 :- op(520,yfx,'..').  % a little higher than '-'
 :- op(200,fy,':').  % same as '+'
-:- op(950,fy,pct).
-:- op(950,xfy,pct).
+%:- op(950,fy,pct).
+%:- op(950,xfy,pct).
+:- op(1150,fy,pct).
+:- op(1150,xfy,pct).
 
 % File: percent.pl
 % Author: Brendan McCarhty
@@ -371,33 +373,39 @@ expand_generator_term(end_of_file, M, Rez) :-
 	findall(Pred,expand_generator_at_eof(M,Pred),Preds),
 	append(Preds,[end_of_file],Rez).
 
-expand_generator_at_eof(M,(Fh :- (percent(ActualIndex,Ixs), Fb))) :-
-	current_predicate(M:'track_pct_expand$$'/5),
-	bagof((Index:Pct),(M:'track_pct_expand$$'(F,A,Fr,Index,Pct)),Ixs),
+expand_generator_at_eof(M,(Fh :- (percent(ActualIndex,Pct_f), Fb))) :-
+	current_predicate(M:'track_pct_expand$$'/6),
+	bagof((Index:Pct),FirstArg^(M:'track_pct_expand$$'(F,A,FirstArg,Fr,Index,Pct)),Ixs),
+	prepare_percent(Ixs,Pct_f),
 	length(HeadArgs,A),
 	Fh =.. [F|HeadArgs],
+	% Special case for ::/2 rules, which require at least one side to be bound
+	% in order to know what the target predicate is. Since it would be problematic
+	% for other reasons to allow head variations for clauses of the same predicate,
+	% we'll assume that they all match and therefore just work with the first one.
+	(F = '::' ->
+	    (once(M:'track_pct_expand$$'(F,A,FirstArg,_Fr,_Index,_Pct)),
+		arg(1,Fh,FirstArg)) ;
+	    true),
 	Fb =.. [Fr,ActualIndex|HeadArgs].
 
-
-functor_consts('$_pct_').
-
 expand_pct_term(Pct,Term,M,TrackTerm,ExpandedTerm) :-
-	functor_consts(Pfx),
 	functor(Term,Term_functor,Term_arity),
-	((current_predicate(M:'track_pct_expand$$'/5),
-	    findall(Index,M:'track_pct_expand$$'(Term_functor,Term_arity,_,Index,_),Indexes))->
+	((current_predicate(M:'track_pct_expand$$'/6),
+	    findall(Index,M:'track_pct_expand$$'(Term_functor,Term_arity,_FirstArg,_,Index,_),Indexes))->
 	    length(Indexes,Len);
 	    Len = 0),
 	Index is Len + 1,
-	atom_concat(Pfx,Term_functor,Fr),
+	atom_concat('$_pct_',Term_functor,Fr),
 	Term =.. [_|Args],
 	ExpandedTerm =.. [Fr,Index|Args],
-	TrackTerm =.. ['track_pct_expand$$',Term_functor,Term_arity,Fr,Index,Pct].
+	(Term_arity=0->FirstArg=[];arg(1,Term,FirstArg)),
+	TrackTerm =.. ['track_pct_expand$$',Term_functor,Term_arity,FirstArg,Fr,Index,Pct].
 
 :- multifile user:term_expansion/6.
 user:term_expansion(Term1, Layout, Ids, Term2, Layout, [pct_token|Ids]) :-
 	nonmember(pct_token, Ids),
-	prolog_load_context(module,Module),
+	(prolog_load_context(module,Module)->true;Module=user),
 	(current_predicate(expand_generator_term/3)-> % avoid strange error msg when loading this module
 	    expand_generator_term(Term1,Module,Term2),
 	    true).

@@ -13,13 +13,14 @@
 % See the License for the specific language governing permissions and
 % limitations under the License.
 %-------------------------------------------------------------------------------
-:- module(evgen,[gen/1,store/2,buffer/1,csort/2,follow/3,seq/1,stabilize/3,filter/4,first/2,
+:- module(evgen,[gen/1,store/2,buffer/1,csort/2,follow/3,seq/1,seq/2,seq/3,stabilize/3,filter/4,first/2,
 		 findone/1, findone/2,tracker/3,track/2,tracked/2]).
 :- use_module(library(between)).
 :- use_module(library(lists)).
 :- use_module(library(samsort)).
 :- use_module(library(random)).
 :- use_module(library(file_systems)).
+:- use_module(library(xml)).
 :- load_files(library(plunit),[if(changed),load_type(source)]).
 :- use_module(percent).
 :- use_module(typer).
@@ -30,8 +31,7 @@
 
 
 :- op(700,xfx,as).
-%:- op(500,xfy,generate).
-%:- op(1150,fx,generate).
+:- op(1050,xfy,'::').
 :- op(400,xf,k). % thousand
 :- op(400,xf,m). % million
 :- op(400,xf,b). % billion
@@ -90,6 +90,8 @@ first_n_members([X|Xs],Max,Y,Len) :-
 :- meta_predicate follow(+,2,+).
 :- meta_predicate filter(+,2,+,2).
 :- meta_predicate seq(2).
+:- meta_predicate seq(2,+).
+:- meta_predicate seq(2,+,+).
 :- meta_predicate stabilize(+,+,2).
 :- meta_predicate first(+,2).
 
@@ -109,6 +111,8 @@ first(N,Mod:Src) :- run_top(Mod,first(N,Src)).
 buffer(Mod:Src) :- run_top(Mod,buffer(Src)).
 
 seq(Mod:Src) :- run_top(Mod,seq(Src)).
+seq(Mod:Src1,Src2) :- run_top(Mod,seq(Src1,Src2)).
+seq(Mod:Src1,Src2,Src3) :- run_top(Mod,seq(Src1,Src2,Src3)).
 
 stabilize(Count,ConflictId,Mod:Src) :- run_top(Mod,stabilize(Count,ConflictId,Src)).
 
@@ -151,8 +155,11 @@ expr1(gen(Rule),Down,Mod,Pred,xgen(Args,Pred,Arity,Down,Mod,T),T,Down) :-
 	(defined_rule(Mod,Pred,Arity,_,_,_,_,_,_)->   	% Validate that a rule exists here, before actual execution
 	    true;
 	    throw('UnknownGeneratorRuleException'(Pred/Arity))).
+expr1(seq(S1,S2),Down,Mod,Name,Gen,T,Down2) :- expr1(seq([S1,S2]),Down,Mod,Name,Gen,T,Down2).
+expr1(seq(S1,S2,S3),Down,Mod,Name,Gen,T,Down2) :- expr1(seq([S1,S2,S3]),Down,Mod,Name,Gen,T,Down2).
 expr1(seq(Seq),Down,Mod,Name,(member(G,Gs),G),T,Down) :-
-	plist(Seq,Down,Mod,Name,Gs,T).
+	(is_list(Seq)->Ss=Seq;Ss=[Seq]),
+	plist(Ss,Down,Mod,Name,Gs,T).
 expr1(follow(LookAhead,SrcMain,Follow),Down,Mod,Name,xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T),T,Down2) :-
 	expr(SrcMain,Down,Mod,Name,Gm,Tm,_),
 	Down = down(Fmt,Limit,Peek1),
@@ -323,21 +330,6 @@ defined_rule(Mod,Pred,0,[],_,_,_,T,Mod:T) :-
 	T =.. [Pred|Args].
 
 
-% bind_gen_args(+ParametersFromRule,+InArgsFromFormula,?Limit,?Index,?Peek)
-% ParametersFromRule list is bound with corresponding InArgsFromFormula,
-% excluding keyword args.
-%
-bind_gen_args([],[],_,_,_).
-bind_gen_args([P|Ps],InArgs,Limit,Index,Peek) :-
-	((nonvar(P),P=(X=Y))->
-	    (keyword_arg(X,Limit,Index,Peek,Y), Iz=InArgs);
-	    InArgs = [P|Iz]),
-	bind_gen_args(Ps,Iz,Limit,Index,Peek).
-
-keyword_arg(max,V,_,_,V).
-keyword_arg(index,_,V,_,V).
-keyword_arg(peek,_,_,V,V).
-
 xbuffer(Mod,_Name,Gen,T,T) :-
 	Gen,
 	AssertMod = Mod,  % TBD
@@ -399,12 +391,22 @@ wgen(_,_,_,_,_,_,_).
 
 
 
-valid_format(pl).
-valid_format(csv).
+%%%
+%%% FORMATTING
+%%%
+
+
+valid_format(Fmt) :- functor(Fmt,F,_), valid_functor_format(F).
+
+valid_functor_format(pl).
+valid_functor_format(csv).
+valid_functor_format(xml).
 
 format_type(pl,T,_Mod,Stream) :- writeq(Stream,T), write(Stream,'.'), nl.
 format_type(csv,T,Mod,Stream) :- format_csv(',',T,Mod,Stream).
 format_type(csv(Sep),T,Mod,Stream) :- format_csv(Sep,T,Mod,Stream).
+format_type(xml,T,Mod,Stream) :- format_xml(T,Mod,2,Stream).
+format_type(xml(Tab),T,Mod,Stream) :- format_xml(T,Mod,Tab,Stream).
 
 format_csv(Sep,T,Mod,Stream) :-	
 	functor(T,F,Arity),
@@ -426,7 +428,7 @@ format_csv_items(Pos,Sep,F,Arity,T,Mod,Stream,Spill) :-
 		format_csv_items(Pos1,Sep,F,Arity,T,Mod,Stream,Sz))).
 	
 format_csv_item(Enc,Ord,Value,Mod,Stream,S1,S2) :-
-	((current_predicate(Mod:'$gfd'/11),
+	((current_predicate(Mod:'$gfd'/12),
 	  Mod:'$gfd'(_,Enc,_Arity,Ord,Type,_Inverse,_Min,Max,_Kx,_,_,_))->
 	    true;
 	    (Max=1,Type=term)),
@@ -457,6 +459,35 @@ format_csvs([V|Vs],First,Type,Mod,Stream) :-
 	format_single_csv_item(Type,Mod,Stream,V),
 	format_csvs(Vs,false,Type,Mod,Stream).
 
+
+
+format_xml(T,Mod,Tab,Stream) :-	format_xml(T,Mod,Tab,0,Stream).
+format_xml(T,Mod,Tab,Indent,Stream) :-
+	indent(Stream,Tab,Indent,NestedIndent),
+	T =.. [P|Args],
+	format_xml_term(Args,P,Mod,Tab,Indent,NestedIndent,Stream),
+	nl(Stream).
+
+format_xml_term([],P,_Mod,_Tab,_,_,Stream) :-
+	format(Stream,"<~a/>",[P]).
+format_xml_term([Arg],P,_Mod,_Tab,_,_,Stream) :-
+	simple(Arg),
+	!,
+	format(Stream,"<~a>~a<~a>",[P,Arg,P]).
+format_xml_term([A|Z],P,Mod,Tab,Indent,NestedIndent,Stream) :-
+	format(Stream,"<~a>~n",[P]),
+	format_xml_args([A|Z],Mod,Tab,NestedIndent,Stream),
+	indent(Stream,Tab,Indent,_),
+	format(Stream,"</~a>",[P]).
+
+format_xml_args([],_,_,_,_).
+format_xml_args([X|Z],Mod,Tab,Indent,Stream) :-
+	format_xml(X,Mod,Tab,Indent,Stream),
+	format_xml_args(Z,Mod,Tab,Indent,Stream).
+
+indent(Stream,Tab,Indent,NestedIndent) :-
+	(for(_,1,Indent), param(Stream) do write(Stream,' ')),
+	NestedIndent is Indent + Tab.
 
 :-set_prolog_flag(discontiguous_warnings,off).
 
@@ -490,10 +521,27 @@ expand_rule(Call,GenTerm,Access) :-
 	once(rule_format(Call,[],Args,[],Kws,Pred)),
 	length(Args,Arity),
 	(var(Pred)->
-	    functor(GenTerm,Pred,_Arity);
+	    (var(GenTerm)->
+		throw(invalid_rule_syntax('one side of :: rule must be nonvar'));
+		functor(GenTerm,Pred,_Arity));
 	    true),
 	bind_gen_args(Kws,_,Limit,Index,Peek),
 	Access = '$grule'(Pred,Arity,Args,Limit,Index,Peek,GenTerm,(Call::GenTerm)).
+
+% bind_gen_args(+ParametersFromRule,+InArgsFromFormula,?Limit,?Index,?Peek)
+% ParametersFromRule list is bound with corresponding InArgsFromFormula,
+% excluding keyword args.
+%
+bind_gen_args([],[],_,_,_).
+bind_gen_args([P|Ps],InArgs,Limit,Index,Peek) :-
+	((nonvar(P),P=(X=Y))->
+	    (keyword_arg(X,Limit,Index,Peek,Y), Iz=InArgs);
+	    InArgs = [P|Iz]),
+	bind_gen_args(Ps,Iz,Limit,Index,Peek).
+
+keyword_arg(max,V,_,_,V).
+keyword_arg(index,_,V,_,V).
+keyword_arg(peek,_,_,V,V).
 
 listify(X,Y) :-
 	(is_list(X)->
@@ -503,6 +551,9 @@ listify(X,Y) :-
 		Y = [X])).
 
 
+%%%
+%%% UNIT TEST
+%%%
 
 :- begin_tests(evgen).
 
@@ -535,17 +586,28 @@ test(xrule4,true(Rez=Exp)) :-
 	expand_term(Rule,[Rez|_]).
 test(xrule5,true(Rez=Exp)) :-
 	Term = bar(_,_),
+	Rule = ((Var1,Var2)::Term),
+	Exp = '$grule'(bar,2,[Var1,Var2],_Limit,_Index,_Peek,Term,Rule),
+	expand_term(Rule,[Rez|_]).
+test(xrule6,true(Rez=Exp)) :-
+	Term = bar(_,_),
 	Peek = y,
 	Rule = (peek=Peek::Term),
 	Exp = '$grule'(bar,0,[],_Limit,_Index,Peek,Term,Rule),
 	expand_term(Rule,[Rez|_]).
-test(xrule6,true(Rez=Exp)) :-
+test(xrule7,true(Rez=Exp)) :-
 	Term = bar(_,_),
 	Peek = y,
 	Index = z,
 	Rule = (peek=Peek,index=Index::Term),
 	Exp = '$grule'(bar,0,[],_Limit,Index,Peek,Term,Rule),
 	expand_term(Rule,[Rez|_]).
+
+test(rule_pct,true(Rez=[Exp|_])) :-
+	Rule = (10 pct foo::bar),
+	Exp = '$grule'(foo,0,[],_Limit,_Index,_Peek,bar,Rule),
+	expand_term(Rule,Rez).
+
 
 
 

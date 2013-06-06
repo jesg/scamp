@@ -125,7 +125,8 @@ examples:
 *----------:--------+
 Template Expression example arguments for percent/2
 
-  For a full description of combinations, see the documentation for percent/2.
+  The expression can be nested. For example, [1..3:80,999] will produce a number between 1 and 3 80% of the time, 
+and 999 20% of the time. For a full description of these and other template subexpressions, see the documentation for percent/2.
   
   Using percent/2, a variation on the example earlier might be this:
   
@@ -173,7 +174,7 @@ message(there).
 
 +------------------------------------------+
 | ?- gen(message).
-[RUGE INFO] "gen" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+[RUGE INFO] "gen" invoked from directory e:/dev/ruge/sample/src/main/prolog/
 message(hello).
 message(world).
 message(out).
@@ -187,7 +188,7 @@ can generate at least that many, so it is more a matter of asking for a maximum:
   
 +------------------------------------------+  
   | ?- first(3,gen(message)).
-[RUGE INFO] "first" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+[RUGE INFO] "first" invoked from directory e:/dev/ruge/sample/src/main/prolog/
 message(hello).
 message(world).
 message(out).
@@ -195,12 +196,11 @@ message(out).
 yes
 +------------------------------------------+  
 
-
   Or to sort by a particular column (start counting at 1):
 
 +------------------------------------------+  
 | ?- csort(1,gen(message)).
-[RUGE INFO] "csort" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+[RUGE INFO] "csort" invoked from directory e:/dev/ruge/sample/src/main/prolog/
 message(hello).
 message(out).
 message(there).
@@ -213,7 +213,7 @@ yes
 
 +------------------------------------------+  
 | ?- first(3,csort(1,gen(message))).
-[RUGE INFO] "first" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+[RUGE INFO] "first" invoked from directory e:/dev/ruge/sample/src/main/prolog/
 message(hello).
 message(out).
 message(there).
@@ -221,15 +221,18 @@ message(there).
 yes
 +------------------------------------------+  
 
+  There are additional predicates available, see the descriptions in evgen.pl. Some are described in the remaining
+sections of this document.
 
-Formatting
+
+Formatting and Directing Output
 
   The default output format is simply the Prolog terms themselves, but often an alternative format is desired that 
 can be consumed by non-Prolog applications. Currently the alternatives are csv (comma-seperate-value) or xml, e.g.:
 
 +------------------------------------------+  
 | ?- store(csv,gen(message)).
-[RUGE INFO] "store" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+[RUGE INFO] "store" invoked from directory e:/dev/ruge/sample/src/main/prolog/
 message,hello
 message,world
 message,out
@@ -255,7 +258,7 @@ expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
 
 +------------------------------------------+  
 | ?- store(csv,gen(message)).
-[RUGE INFO] "store" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+[RUGE INFO] "store" invoked from directory e:/dev/ruge/sample/src/main/prolog/
 message,hello,groucho@yahoo.com
 message,world,harpo@gmail.com
 message,out,chico@hotmail.com
@@ -264,9 +267,219 @@ message,there,zeppo@aol.com
 yes
 +------------------------------------------+  
 
+  The use of 'store' for this predicate name serves double purpose. The output can be directed to a file as follows:
+  
++------------------------------------------+  
+| ?- store(file(my_messages,csv),gen(message)).
+[RUGE INFO] "store" invoked from directory e:/dev/ruge/sample/src/main/prolog/
+[RUGE INFO] Execution summary: 4 lines in 0.001 seconds written to e:/dev/ruge/sample/src/main/prolog/generated/my_messages.csv
+yes
++------------------------------------------+    
+
+  As indicated, the output is in the file my_messages.csv file. It is put in a special directory named 'generated' in order to
+avoid confliciting with any other files you might have in your current directory. That directory is in turn relative to the
+current working directory of the Prolog interpreter, which is by default wherever you start up the interpreter. In order to
+avoid confusion, the INFO messages provide explicit directory information about what directory you invoke commands in and
+where output ends up.
+
+  A common need when using store/2 or similar predicate that aggregates its nested results is to sequence multiple rules within it.
+For example, it might be desirable to output initialization events before body events:
+
++------------------------------------------+  
+:- include(ruge(common)).
+
+intro(hello).
+intro(world).
+
+body(out).
+body(there).
++------------------------------------------+    
+
+  Which can be run as in these examples, directly or within store/2:
+
++------------------------------------------+  
+| ?- seq(gen(intro),gen(body)).
+[RUGE INFO] "seq" invoked from directory e:/dev/ruge/ruge/src/site/apt/prolog_samples/
+intro(hello).
+intro(world).
+body(out).
+body(there).
+[RUGE INFO] Execution summary: 4 lines in 0.001 seconds written to stdout
+yes
+| ?- store(csv,seq(gen(intro),gen(body))).
+[RUGE INFO] "store" invoked from directory e:/dev/ruge/ruge/src/site/apt/prolog_samples/
+intro,hello
+intro,world
+body,out
+body,there
+[RUGE INFO] Execution summary: 4 lines in 0.001 seconds written to stdout
+yes
++------------------------------------------+  
+
+Complex Rules
+
+  In our example so far, the name of the predicate has matched the desired output item exactly: the predicate <message>
+has produced the term <message>. RUGE provides A more general rule syntax that allows the predicate name to be distinct 
+from the generated term. Extending the previous example, provdiding the prefix 'say::' makes that ('say') the predicate
+name while still producing the same <message> construct:
+
++------------------------------------------+ 
+say::message(hello,email(groucho,yahoo)).
+say::message(world,email(harpo,gmail)).
+say::message(out,email(chico,hotmail)).
+say::message(there,email(zeppo,aol)).
+
+expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
++------------------------------------------+  
+
+  One reason why you might want to do this is to provide different output constructs, e.g.:
+
++------------------------------------------+  
+say::message(hello,email(groucho,yahoo)).
+say::update(world,email(harpo,gmail)).
+say::post(out,email(chico,hotmail)).
+say::communique(there,email(zeppo,aol)).
+
+expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
++------------------------------------------+  
+
+  Which generates all the variations:
+
++------------------------------------------+  
+| ?- gen(say).
+[RUGE INFO] "gen" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+message(hello,email(groucho,yahoo)).
+update(world,email(harpo,gmail)).
+post(out,email(chico,hotmail)).
+communique(there,email(zeppo,aol)).
+[RUGE INFO] Execution summary: 4 lines in 0.002 seconds written to stdout
+yes
++------------------------------------------+  
+
+  Combined with the pct opeprator described earlier, we can randomly (with skew) select just
+one rule:
+
++------------------------------------------+  
+10 pct say::message(hello,email(groucho,yahoo)).
+10 pct say::update(world,email(harpo,gmail)).
+70 pct say::post(out,email(chico,hotmail)).
+10 pct say::communique(there,email(zeppo,aol)).
+
+expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
++------------------------------------------+  
+
+  Which when run will usually select the third clause:
+
++------------------------------------------+  
+| ?- gen(say).
+[RUGE INFO] "gen" invoked from directory e:/dev/ruge/ruge/src/site/apt/prolog_samples/
+post(out,email(chico,hotmail)).
+[RUGE INFO] Execution summary: 1 line in 0.0 seconds written to stdout
+yes
++------------------------------------------+  
+
+  Alternatively, the pct/2 constructs and generation rules might be separated. This leads to another reason
+For using the <::> construct, that the generated term might be a variable that is bound lower-down in the program. 
+This example produces the exact results as the previous one:
+
++------------------------------------------+  
+say::R :- valid_say(R).
+
+10 pct valid_say(message(hello,email(groucho,yahoo))).
+10 pct valid_say(update(world,email(harpo,gmail))).
+70 pct valid_say(post(out,email(chico,hotmail))).
+10 pct valid_say(communique(there,email(zeppo,aol))).
+
+expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
++------------------------------------------+  
+  
+  Another reason for this syntax is to allow the passing of values that are not directly part of the generated term.
+For example, another way to control the generated quantity is to pass the value into the rule:
+
++------------------------------------------+
+say(N)::R :-
+	between(1,N,_),
+	valid_say(R).
+
+valid_say(message(Word,email(User,Domain))) :-
+	percent(Word,[hello,world,out,there,you]),
+	percent(User,[groucho,harpo,chico,zeppo]),
+	percent(Domain,[yahoo,gmail,hotmail,aol]).
+
+expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
++------------------------------------------+  
+
+  The value for N can be passed in like this:
+
++------------------------------------------+  
+| ?- gen(say(3)).
+[RUGE INFO] "gen" invoked from directory e:/dev/ruge/dcp/src/main/prolog/
+message(hello,email(harpo,gmail)).
+message(you,email(chico,aol)).
+message(you,email(groucho,hotmail)).
+[RUGE INFO] Execution summary: 3 lines in 0.001 seconds written to stdout
+yes
++------------------------------------------+  
+
+  It should be noted that -- useful for debugging -- you can still invoke these predicates directly 
+from Prolog without going through RUGE:
+  
++------------------------------------------+  
+| ?- say(2)::R.
+R = message(there,email(groucho,aol)) ? ;
+R = message(out,email(zeppo,gmail)) ? ;
+no
++------------------------------------------+    
+
+  A final reason to use the '::' construct on rules is when buffering. RUGE output is not by default buffered, which makes for 
+very fast output generation of large rulesets. Sometimes however it is desirable to buffer the data in memory to allow rules 
+to reference previously-generated entries. The following program does this:
 
 
-File Output
++------------------------------------------+    
+:- dynamic message/2.
+
+say::message(X,Count1) :-
+	between(1,9,_),
+	percent(X,[blue,green,red]),
+	findall(X,message(X,_),Cs),
+	length(Cs,Count),
+	Count1 is Count+1.
++------------------------------------------+    
+
+  Run without than with buffering, observe the effect:
+
++------------------------------------------+    
+| ?- gen(say).
+[RUGE INFO] "gen" invoked from directory e:/dev/ruge/ruge/src/site/apt/prolog_samples/
+message(green,1).
+message(green,1).
+message(red,1).
+message(blue,1).
+message(blue,1).
+message(blue,1).
+message(blue,1).
+message(red,1).
+message(red,1).
+[RUGE INFO] Execution summary: 9 lines in 0.003 seconds written to stdout
+yes
+| ?- buffer(gen(say)).
+[RUGE INFO] "buffer" invoked from directory e:/dev/ruge/ruge/src/site/apt/prolog_samples/
+message(blue,1).
+message(red,1).
+message(blue,2).
+message(blue,3).
+message(green,1).
+message(red,2).
+message(blue,4).
+message(red,3).
+message(red,4).
+[RUGE INFO] Execution summary: 9 lines in 0.002 seconds written to stdout
+yes
++------------------------------------------+    
+  
+  
+Simulation and N-Stability
 
 
 
