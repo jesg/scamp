@@ -64,18 +64,18 @@ shorten(Max,Longer,Shorter) :-
 		shorten(M1,Ls,Ss))).
 
 
-head_member(V,L,Max) :- head_member(V,L,0,Max).
-head_member(V,[Head|Tail],Pos,Max) :-
-	Pos < Max,
-	(V=Head->
-	    true;
-	    (P1 is Pos+1, head_member(V,Tail,P1,Max))).
+%head_member(V,L,Max) :- head_member(V,L,0,Max).
+%head_member(V,[Head|Tail],Pos,Max) :-
+%	Pos < Max,
+%	(V=Head->
+%	    true;
+%	    (P1 is Pos+1, head_member(V,Tail,P1,Max))).
 
-first_n_members([],_,[],0).
-first_n_members([X|Xs],Max,Y,Len) :-
-	(Max =< 0->
-	    (Y=[],Len=0);
-	    (Y=[X|Ys],M1 is Max-1,first_n_members(Xs,M1,Ys,Lz),Len is Lz+1)).
+%first_n_members([],_,[],0).
+%first_n_members([X|Xs],Max,Y,Len) :-
+%	(Max =< 0->
+%	    (Y=[],Len=0);
+%	    (Y=[X|Ys],M1 is Max-1,first_n_members(Xs,M1,Ys,Lz),Len is Lz+1)).
 
 
 
@@ -173,8 +173,8 @@ expr1(first(Limit,Expr),down(Fmt,_,Peek),Mod,Name,Gen,T,Down2) :-
 	Down2 = down(Fmt,Limit,Peek),
 	expr(Expr,Down2,Mod,Name,Gen,T,Down2).
 expr1(buffer(Src),Down,Mod,Name,evgen:xbuffer(Mod,Name,Gen,St,T),T,Down) :- expr(Src,Down,Mod,Name,Gen,St,_).
-expr1(load(Src),Down,Mod,Src,evgen:load_thru(Stream,Mod,Type,T),T,Down) :-
-	open_dest(Src,'should_not_happen',Type,Stream).
+%expr1(load(Src),Down,Mod,Src,evgen:load_thru(Stream,Mod,Type,T),T,Down) :-
+%	open_dest(Src,'should_not_happen',Type,Stream).
 expr1(store(Dest,Src),Down,Mod,Name,store_thru(Type,Stream,Mod,Gen,St,T),T,Down2) :-
 	expr(Src,Down,Mod,_,Gen,St,_),
 	open_dest(Dest,Name,Type,Stream),
@@ -183,13 +183,13 @@ expr1(store(Dest,Src),Down,Mod,Name,store_thru(Type,Stream,Mod,Gen,St,T),T,Down2
 	    throw(invalid_format(Dest))).
 expr1(filter(Kind,Pred,Len,Src),Down,Mod,Name,xfilter(Kind,Pred,Len,Mod,Gen,St,T),T,Down) :-
 	expr(Src,Down,Mod,Name,Gen,St,_).
-expr1(csort_tbd_needed(Column,Src),Down,Mod,Name,ld(F2,T),T,Down) :-
-	expr(Src,Down,Mod,Name,Gen,St,_),
-	open(temp('devc_sort'),write,Stream,[if_exists(generate_unique_name)]),
-	stream_property(Stream, file_name(TempFileName)),
-	format('Logging to ~a~n', [TempFileName]),
-	output(Stream,Down,Mod,Name,Gen,St),
-	exec_sort(F2,Column,F2).
+%expr1(csort_tbd_needed(Column,Src),Down,Mod,Name,ld(F2,T),T,Down) :-
+%	expr(Src,Down,Mod,Name,Gen,St,_),
+%	open(temp('devc_sort'),write,Stream,[if_exists(generate_unique_name)]),
+%	stream_property(Stream, file_name(TempFileName)),
+%	format('Logging to ~a~n', [TempFileName]),
+%	output(Stream,Down,Mod,Name,Gen,St),
+%	exec_sort(F2,Column,F2).
 expr1(csort(Column,Src),Down,Mod,Name,xsort(Column,Gen,St,Down,T),T,Down) :-
 	expr(Src,Down,Mod,Name,Gen,St,_).
 
@@ -305,7 +305,8 @@ stabilize_push(Mod,ConflictId,BaseKey,PendingKey,ConflictValues,Next,Term) :-
 		    (member(Pg,Pending),
 			format("RETRY: ~p~n",[Pg]),
 			stabilize_next(Mod,ConflictId,BaseKey,PendingKey,Pg,Term))))).
-		    
+
+:- dynamic gen_counter/2.
 
 xgen(InArgs,Pred,Arity,Down,Mod,Term) :-
 	down(limit,Down,Limit),
@@ -335,13 +336,13 @@ xbuffer(Mod,_Name,Gen,T,T) :-
 	AssertMod = Mod,  % TBD
 	xassert(Mod,AssertMod,T).
 
-store_thru(Type,Stream,_Mod,Gen,T,T) :-
+store_thru(Type,Stream,Mod,Gen,T,T) :-
 	Gen,
-	format_type(Type,T,Stream).
+	format_type(Type,T,Mod,Stream).
 store_thru(_,Stream,_,_,_) :- close(Stream).
 
-load_thru(Stream,_Mod,Type,T) :- read_next(Type,Stream,T).
-load_thru(Stream,_,_,_) :- close(Stream), fail.
+%load_thru(Stream,_Mod,Type,T) :- read_next(Type,Stream,T).
+%load_thru(Stream,_,_,_) :- close(Stream), fail.
 
 
 open_dest(Fmt,_,Fmt,Stream) :- valid_format(Fmt), current_output(Stream).

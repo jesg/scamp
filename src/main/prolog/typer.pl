@@ -25,8 +25,6 @@
 
 interface_expansion(Term,Meta) :- 
 	Term = (interface P),
-	nonvar(Ifc),
-	functor(Ifc,interface,_),  % Future: other interface attributes
 	functor(P,F,Arity),
 	findall(M,(between(1,Arity,Pos),expand_interface(Arity,Pos,P,F,M)),FieldMeta),
 	(member('$gfd'(_,_,Arity,KeyPos,_,_,_,_,0,_,_,_),FieldMeta)->true;KeyPos=1),
@@ -132,7 +130,7 @@ bump(Mod,F,Count) :-
 	Mod:bb_put(F,NextCount).
 
 
-:- meta_predicate xassert(2).	
+:- meta_predicate xassert(2,+,+).	
 xassert(DefMod,AssertMod,Term) :-
 	assert(AssertMod:Term,Ref),
 	functor(Term,F,A),

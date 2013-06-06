@@ -331,21 +331,21 @@ merge_entry([X:P1|_],X:P2,_) :-
 
 
 
-step_random_mean(Low,Mean,High,Step,R) :-
-	random_mean(Low,Mean,High,V1),
-	step(V1,Step,R).
+%step_random_mean(Low,Mean,High,Step,R) :-
+%	random_mean(Low,Mean,High,V1),
+%	step(V1,Step,R).
 
 random_mean(Low,Mean,High,R) :-
 	Split is 1 - (Mean - Low) / (High - Low),
 	(maybe(Split)->prandom(Low,Mean,R);prandom(Mean,High,R)).
 
-random_pct(Pct,R) :-
-	Split is 1 - Pct / 100,
-	(maybe(Split)->random(0,Pct,R);random(Pct,101,R)).
+%random_pct(Pct,R) :-
+%	Split is 1 - Pct / 100,
+%	(maybe(Split)->random(0,Pct,R);random(Pct,101,R)).
 
-step_prandom(Min,Max,Step,Var) :-
-	prandom(Min,Max,V1),
-	step(V1,Step,Var).
+%step_prandom(Min,Max,Step,Var) :-
+%	prandom(Min,Max,V1),
+%	step(V1,Step,Var).
 
 step(V,Step,V1) :- V1 is Step * (V // Step).
 

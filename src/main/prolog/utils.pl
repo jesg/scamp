@@ -160,6 +160,8 @@ month(oct,10,31).
 month(nov,11,30).
 month(dec,12,31).
 
+:- dynamic index_days_accumulating_in_year/3.
+
 index_date_days :-
 	month(Month,Mx,Total),
 	Mp is Mx-1,
