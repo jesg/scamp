@@ -6,6 +6,10 @@
             6 June 2013
             ------             
   
+
+%{toc}
+
+  
 Prolog First
 
   RUGE provides a test-generation framework that extends core Prolog capabilities. Prolog is an excellent language for
@@ -32,6 +36,8 @@ hello world
 yes
 +------------------------------------------+
 
+Controlled Randomization
+
   Sometimes it useful to generate all possible combinations in this manner, but while Prolog is great for exploring all 
 possibile valid combinations, most 
 any non-trivial data/event model involves a vast and probably unlimited number of possible combinations. This is therefore
@@ -39,7 +45,7 @@ not practical for general
 test generation. Nor is sufficient to generate the first n results from this set, as Prolog works in a depth first manner and will always 
 produce the same set without ever getting to the rest. 
 
-Controlled Randomization
+* Non-Deterministic Choice
 
   RUGE provides capabilities to introduce 'controlled' randomness into the exploration of the search space, thus making Prolog practical for
 general testing. For example, in the following we extend the program above with prefixes on the 'message' predicate:
@@ -94,6 +100,8 @@ user:file_search_path(ruge,'C:/some/where').
 to pre-arrange a common library path. In any event, for readability remaining code examples will assume the header is provided.
 If you copy & paste be sure to include the header of your choice. (Hint: if you forget the header, you'll see syntax errors
 because RUGE defines 'pct' as an operator which if not previously loaded will not be recognized by Prolog as valid syntax.)
+
+* percent/2
 
   The 'pct' operator provides controlled randomization at the clause level, but RUGE also provides a percent/2 utility for
 controlled randomization at the goal level. The percent/2 predicate binds a variable to a random value as controlled by a
@@ -160,6 +168,8 @@ More on Generation
   The preceding examples have included a user-defined generation loop. In practice, a number of other implementation considerations 
 can sometimes be tedious to manage by hand. As an alternative, RUGE provides its own generation loop. All you have
 to do is provide the generation predicates.
+
+* Generation Functions
 
   Remove the gen1 predicate from the previous examples, and add a few more clauses, so that the code is simply as follows:
 
@@ -241,6 +251,8 @@ message,there
 yes
 +------------------------------------------+  
 
+* Customizing Structured Terms
+
   Sometimes it is useful to work with complex terms that must be formatted a certain way. An example is email.
 The following example adds an email/2 argument to message, and then defines how to format it using expose_term/3.
 RUGE discovers the latter when formatting and uses it to construct arguments to Prolog's built-in format/2:
@@ -266,6 +278,8 @@ message,there,zeppo@aol.com
 [RUGE INFO] Execution summary: 4 lines in 0.002 seconds written to stdout
 yes
 +------------------------------------------+  
+
+* Output to a file
 
   The use of 'store' for this predicate name serves double purpose. The output can be directed to a file as follows:
   
@@ -332,6 +346,8 @@ say::message(there,email(zeppo,aol)).
 expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
 +------------------------------------------+  
 
+* Heterogenous Output
+
   One reason why you might want to do this is to provide different output constructs, e.g.:
 
 +------------------------------------------+  
@@ -368,7 +384,7 @@ one rule:
 expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
 +------------------------------------------+  
 
-  Which when run will usually select the third clause:
+  Which when run will (usually) select the third clause:
 
 +------------------------------------------+  
 | ?- gen(say).
@@ -377,6 +393,8 @@ post(out,email(chico,hotmail)).
 [RUGE INFO] Execution summary: 1 line in 0.0 seconds written to stdout
 yes
 +------------------------------------------+  
+
+* Nested Rules
 
   Alternatively, the pct/2 constructs and generation rules might be separated. This leads to another reason
 For using the <::> construct, that the generated term might be a variable that is bound lower-down in the program. 
@@ -393,6 +411,8 @@ say::R :- valid_say(R).
 expose_term(email(N,Domain),"~a@~a.com",[N,Domain]).
 +------------------------------------------+  
   
+* Parameter Passing
+
   Another reason for this syntax is to allow the passing of values that are not directly part of the generated term.
 For example, another way to control the generated quantity is to pass the value into the rule:
 
@@ -430,6 +450,8 @@ R = message(there,email(groucho,aol)) ? ;
 R = message(out,email(zeppo,gmail)) ? ;
 no
 +------------------------------------------+    
+
+* Buffering
 
   A final reason to use the '::' construct on rules is when buffering. RUGE output is not by default buffered, which makes for 
 very fast output generation of large rulesets. Sometimes however it is desirable to buffer the data in memory to allow rules 
@@ -481,7 +503,7 @@ yes
   
 Simulation and N-Stability
 
-
+   TBD...
 
 
 
