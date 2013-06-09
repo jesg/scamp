@@ -20,7 +20,7 @@
 			<email>brendan.mccarthy@devclear.com</email>
 			<roles>
 				<role>Originator</role>
-				<role>Architect</role>
+				<role>Principal Architect</role>
 			</roles>
 			<organization>devclear.com</organization>
 			<timezone>-6</timezone>
@@ -33,6 +33,7 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>		
 	</properties>
 
 	<licenses>
@@ -55,6 +56,12 @@
 		<!-- <repository> <id>repo</id> <url>https://bitbucket.org/bmccarthy/bmccarthy-mvn-repo/raw/master/releases</url> 
 			</repository> <snapshotRepository> <id>snapshot-repo</id> <url>https://bitbucket.org/bmccarthy/bmccarthy-mvn-repo/raw/master/snapshots</url> 
 			</snapshotRepository> -->
+			<!-- 
+         -->		
+        <site>
+            <id>site-docs</id>
+            <url>file:../../bmccarthy-bb-docs/${project.artifactId}</url>
+        </site>	
 	</distributionManagement>
 
 	<build>

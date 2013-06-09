@@ -12,9 +12,10 @@
   
 Prolog First
 
-  RUGE provides a test-generation framework that extends core Prolog capabilities. Prolog is an excellent language for
+  RUGE provides a test-generation framework that extends core Prolog capabilities. Before discussing RUGE, it is
+worth pointing out that Prolog alone is an excellent language for
 exploring a search space and generating elements from that search space. 
-For example, this simple program uses the common generate-and-test idiom in Prolog:
+For example, this simple program uses the common generate-and-fail idiom in Prolog:
 
 +------------------------------------------+
 gen1 :-
@@ -35,6 +36,10 @@ message(world).
 hello world 
 yes
 +------------------------------------------+
+
+  Of course, the message (or other) predicate would typically be more complex, invoking other Prolog predicates, and so on.
+The collective set of reachable predicates would define all allowable (or, depending on your perspective, restrict all
+disallowable) combinations to generate. The simply generate-and-fail loop above will return all valid possibilities.
 
 Controlled Randomization
 
