@@ -21,10 +21,9 @@
 :- use_module(utils).
 :- load_files(library(plunit),[if(changed),load_type(source)]).
 
-:- op(520,yfx,'..').  % a little higher than '-'
+%:- op(520,yfx,'..').  % a little higher than '-'
+:- op(550,xfy,'..').  % a little higher than '-'
 :- op(200,fy,':').  % same as '+'
-%:- op(950,fy,pct).
-%:- op(950,xfy,pct).
 :- op(1150,fy,pct).
 :- op(1150,xfy,pct).
 
