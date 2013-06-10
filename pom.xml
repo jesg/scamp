@@ -6,7 +6,7 @@
 	<version>0.0.1-SNAPSHOT</version>
 
 	<name>RUGE- RUle GEnerator</name>
-	<description>A system for generating and running controlled random tests</description>
+	<description>A system for generating and running tests</description>
 	<url>http://com.devclear.com/ruge</url>
 	<inceptionYear>2013</inceptionYear>
 	<organization>
@@ -138,6 +138,7 @@
 					</execution>
 				</executions>
 			</plugin>
+			<!-- 
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>exec-maven-plugin</artifactId>
@@ -161,6 +162,7 @@
 					</arguments>
 				</configuration>
 			</plugin>
+			 -->
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>wagon-maven-plugin</artifactId>
