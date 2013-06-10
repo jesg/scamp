@@ -2,7 +2,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.devclear</groupId>
 	<artifactId>ruge</artifactId>
-	<version>0.0.1</version>
+	<version>0.0.1-SNAPSHOT</version>
 
 	<name>RUGE- RUle GEnerator</name>
 	<description>A system for generating and running tests</description>
