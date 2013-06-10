@@ -29,7 +29,7 @@
 
     <scm>
         <connection>scm:hg:http://bitbucket.org/bmccarthy/ruge</connection>
-        <developerConnection>scm:hg:${staging.hg.repo.url}</developerConnection>
+        <developerConnection>scm:hg:../ruge</developerConnection>
         <url>http://bitbucket.org/bmccarthy/ruge</url>
     </scm>
 
