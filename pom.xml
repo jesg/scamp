@@ -1,9 +1,8 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.devclear</groupId>
 	<artifactId>ruge</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.0.1</version>
 
 	<name>RUGE- RUle GEnerator</name>
 	<description>A system for generating and running tests</description>
@@ -31,7 +30,8 @@
         <connection>scm:hg:http://bitbucket.org/bmccarthy/ruge</connection>
         <developerConnection>scm:hg:../ruge</developerConnection>
         <url>http://bitbucket.org/bmccarthy/ruge</url>
-    </scm>
+      <tag>ruge-0.0.1</tag>
+  </scm>
 
 	<issueManagement>
 		<url>https://bitbucket.org/bmccarthy/ruge/issues</url>
@@ -209,7 +209,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore></ignore>
+										<ignore />
 									</action>
 								</pluginExecution>
 							</pluginExecutions>
