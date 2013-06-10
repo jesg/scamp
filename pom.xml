@@ -2,7 +2,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.devclear</groupId>
 	<artifactId>ruge</artifactId>
-	<version>0.0.2-SNAPSHOT</version>
+	<version>0.0.1-SNAPSHOT</version>
 
 	<name>RUGE- RUle GEnerator</name>
 	<description>A system for generating and running tests</description>
@@ -28,7 +28,7 @@
 
     <scm>
         <connection>scm:hg:http://bitbucket.org/bmccarthy/ruge</connection>
-        <developerConnection>scm:hg:..\ruge</developerConnection>
+        <developerConnection>scm:hg:${staging.hg.repo.url}</developerConnection>
         <url>http://bitbucket.org/bmccarthy/ruge</url>
       <tag>HEAD</tag>
   </scm>
@@ -40,6 +40,7 @@
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+		<staging.hg.repo.url>scm:hg:http://bitbucket.org/bmccarthy/ruge</staging.hg.repo.url>
 	</properties>
 
 	<licenses>
