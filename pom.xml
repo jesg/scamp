@@ -2,7 +2,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.devclear</groupId>
 	<artifactId>ruge</artifactId>
-	<version>0.0.2-SNAPSHOT</version>
+	<version>0.0.1-SNAPSHOT</version>
 
 	<name>RUGE- RUle GEnerator</name>
 	<description>A system for generating and running tests</description>
@@ -41,6 +41,7 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<staging.hg.repo.url>scm:hg:http://bitbucket.org/bmccarthy/ruge</staging.hg.repo.url>
+		<local.dev.root>E:/dev</local.dev.root>
 	</properties>
 
 	<licenses>
@@ -54,11 +55,11 @@
 	<distributionManagement>
 		<repository>
 			<id>repo</id>
-			<url>file:../../bmccarthy-mvn-repo/releases</url>
+			<url>file:///${local.dev.root}/bmccarthy-mvn-repo/releases</url>
 		</repository>
 		<snapshotRepository>
 			<id>snapshot-repo</id>
-			<url>file:../../bmccarthy-mvn-repo/snapshots</url>
+			<url>file:///${local.dev.root}/bmccarthy-mvn-repo/snapshots</url>
 		</snapshotRepository>
 		<!-- <repository> <id>repo</id> <url>https://bitbucket.org/bmccarthy/bmccarthy-mvn-repo/raw/master/releases</url> 
 			</repository> <snapshotRepository> <id>snapshot-repo</id> <url>https://bitbucket.org/bmccarthy/bmccarthy-mvn-repo/raw/master/snapshots</url> 
@@ -66,7 +67,7 @@
 		<!-- -->
 		<site>
 			<id>site-docs</id>
-			<url>file:../../bmccarthy-bb-docs/${project.artifactId}</url>
+			<url>file:///${local.dev.root}/bmccarthy-bb-docs/${project.artifactId}</url>			
 		</site>
 	</distributionManagement>
 
