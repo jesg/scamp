@@ -81,7 +81,7 @@
 %
 percent(V,Mod:Expr) :- once(peval(Expr,Mod,V)).
 
-peval(C,_,C) :- simple(C).
+peval(X,_,V) :- simple(X), X=V.  % equality after simple check to avoid library attributed variable exception.
 peval(Min..Max,_,V) :- eval_range(Min,Max,V).
 peval([X|Z],Mod,V) :- 	random(0,101,R), walk([X|Z],Mod,R,[],V).
 peval(:Pred,Mod,V) :-
@@ -208,13 +208,13 @@ expand([X:P|R],Rez) :-
 % and the values may be dates.
 eval_range(Min,Max,V) :-
 	redate_range_pair(Min,Max,Min1,Max1),
-	simple(Min1),
+	simple(Max1),
 	prandom(Min1,Max1,V).
-eval_range(Min..avg(Avg),Max,V) :-
+eval_range(Min,avg(Avg)..Max,V) :-
 	redate_range_pair(Min,Max,Min1,Max1),
 	redate_intermediate(Avg,Avg1),
 	random_mean(Min1,Avg1,Max1,V).
-eval_range(Min..step(Step),Max,V) :-
+eval_range(Min,step(Step)..Max,V) :-
 	redate_range_pair(Min,Max,Min1,Max1),
 	redate_intermediate(Step,Step1),	
 	prandom(Min1,Max1,V1),

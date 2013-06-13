@@ -411,7 +411,7 @@ format_type(xml(Tab),T,Mod,Stream) :- format_xml(T,Mod,Tab,Stream).
 
 format_csv(Sep,T,Mod,Stream) :-	
 	functor(T,F,Arity),
-	write(Stream,F),
+	format_simple(F,Sep,Stream),
 	(format_csv_items(1,Sep,F,Arity,T,Mod,Stream,Spill)->
 	    true;
 	    throw('FormatFailure'(csv,T))),
@@ -424,42 +424,52 @@ format_csv_items(Pos,Sep,F,Arity,T,Mod,Stream,Spill) :-
 	    Spill=[];
 	    (write(Stream,Sep),
 		arg(Pos,T,Arg),
-		format_csv_item(F,Pos,Arg,Mod,Stream,Sz,Spill),
+		format_csv_item(F,Pos,Arg,Mod,Stream,Sep,Sz,Spill),
 		Pos1 is Pos+1,
 		format_csv_items(Pos1,Sep,F,Arity,T,Mod,Stream,Sz))).
 	
-format_csv_item(Enc,Ord,Value,Mod,Stream,S1,S2) :-
+format_csv_item(Enc,Ord,Value,Mod,Stream,Sep,S1,S2) :-
 	((current_predicate(Mod:'$gfd'/12),
 	  Mod:'$gfd'(_,Enc,_Arity,Ord,Type,_Inverse,_Min,Max,_Kx,_,_,_))->
 	    true;
 	    (Max=1,Type=term)),
-	((is_list(Value), Max \== 1) ->
-	    format_csv_item_list(Value,true,Type,Mod,Stream,S1,S2);
-	    (format_single_csv_item(Type,Mod,Stream,Value)->
+	((is_list(Value), Type \== string) ->
+	    format_csv_item_list(Value,true,Type,Mod,Stream,Sep,S1,S2);
+	    (format_single_csv_item(Type,Mod,Stream,Sep,Value)->
 		S1=S2;
 		(write(Stream,1),S2=[Value|S1]))).
 
-format_single_csv_item(date,_,Stream,V) :- write(Stream,V).
-format_single_csv_item(string,_,Stream,V) :- is_list(V)->format(Stream,"~s",[V]);write(Stream,V).
-format_single_csv_item(int,_,Stream,V) :- write(Stream,V).
-format_single_csv_item(term,Mod,Stream,V) :-
+format_single_csv_item(date,_,Stream,_,V) :- write(Stream,V).
+format_single_csv_item(string,_,Stream,Sep,V) :- format_simple(V,Sep,Stream).
+format_single_csv_item(int,_,Stream,_,V) :- write(Stream,V).
+format_single_csv_item(term,Mod,Stream,Sep,V) :-
 	((current_predicate(Mod:expose_term/3),
 	  Mod:expose_term(V,Format,Args))->
 	    format(Stream,Format,Args);
-	    write(Stream,V)).
+	    format_simple(V,Sep,Stream)).
 
-format_csv_item_list(Vs,First,Type,Mod,Stream,S1,S2) :-
+format_csv_item_list(Vs,First,Type,Mod,Stream,Sep,S1,S2) :-
 	(member(Type,[date,string,int,term])->
-	    (format_csvs(Vs,First,Type,Mod,Stream),S1=S2);
+	    (format_csvs(Vs,First,Type,Mod,Stream,Sep),S1=S2);
 	    (length(Vs,Len), write(Stream,Len), S2 = [Vs|S1])).
 
 
-format_csvs([],_,_,_,_).
-format_csvs([V|Vs],First,Type,Mod,Stream) :-
+format_csvs([],_,_,_,_,_).
+format_csvs([V|Vs],First,Type,Mod,Stream,Sep) :-
 	(First->true;write(Stream,'|')),
-	format_single_csv_item(Type,Mod,Stream,V),
-	format_csvs(Vs,false,Type,Mod,Stream).
+	format_single_csv_item(Type,Mod,Stream,Sep,V),
+	format_csvs(Vs,false,Type,Mod,Stream,Sep).
 
+
+format_simple(X,Sep,Stream) :-
+	(atom(X)->atom_chars(X,Xc);Xc=X),
+	format_string(Xc,Sep,Stream).
+
+format_string([],_,_).
+format_string([C|R],Sep,Stream) :-
+	(C==Sep->write('\\');true),
+	write(Stream,C),
+	format_string(R,Sep,Stream).
 
 
 format_xml(T,Mod,Tab,Stream) :-	format_xml(T,Mod,Tab,0,Stream).
@@ -604,10 +614,11 @@ test(xrule7,true(Rez=Exp)) :-
 	Exp = '$grule'(bar,0,[],_Limit,Index,Peek,Term,Rule),
 	expand_term(Rule,[Rez|_]).
 
-test(rule_pct,true(Rez=[Exp|_])) :-
-	Rule = (10 pct foo::bar),
-	Exp = '$grule'(foo,0,[],_Limit,_Index,_Peek,bar,Rule),
-	expand_term(Rule,Rez).
+% Need another way to test
+%test(rule_pct,true(Rez=[Exp|_])) :-
+%	Rule = (10 pct foo::bar),
+%	Exp = '$grule'(foo,0,[],_Limit,_Index,_Peek,bar,Rule),
+%	expand_term(Rule,Rez).
 
 
 
