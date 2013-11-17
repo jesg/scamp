@@ -13,7 +13,7 @@
 % See the License for the specific language governing permissions and
 % limitations under the License.
 %-------------------------------------------------------------------------------
-:- module(evgen,[gen/1,store/2,buffer/1,csort/2,follow/3,seq/1,seq/2,seq/3,stabilize/3,filter/4,first/2,
+:- module(evgen,[gen/1,gen/2,store/2,buffer/1,csort/2,follow/3,seq/1,seq/2,seq/3,stabilize/3,filter/4,first/2,
 		 findone/1, findone/2,tracker/3,track/2,tracked/2]).
 :- use_module(library(between)).
 :- use_module(library(lists)).
@@ -84,6 +84,7 @@ shorten(Max,Longer,Shorter) :-
 %%% Top-leval predicates
 %%%
 :- meta_predicate gen(2).
+:- meta_predicate gen(2,+).
 :- meta_predicate store(?,2).
 :- meta_predicate buffer(2).
 :- meta_predicate csort(+,2).
@@ -104,7 +105,8 @@ run_top(Mod,Expr) :-
 	current_output(Stream),
 	output(Stream,Down,Mod,Name,Gen,T).
 
-gen(Mod:Src) :- run_top(Mod,gen(Src)).
+gen(Mod:Src) :- run_top(Mod,gen(Src,unbounded)).
+gen(Mod:Src,Count) :- run_top(Mod,gen(Src,Count)).
 
 first(N,Mod:Src) :- run_top(Mod,first(N,Src)).
 
@@ -136,20 +138,52 @@ store(Dest,Mod:Src) :-
 % buffering.
 %
 expr_generator(Expr,Mod,Name,Gen,T,Down) :-
-	catch(expr(Expr,down(pl,-1,[]),Mod,Name,Gen,T,Down),
+	init_down(InitDown),
+	catch(expr(Expr,InitDown,Mod,Name,Gen,T,Down),
 	      Code,
 	      throw('ExprSyntaxError'(Code))).
 
-down(format,down(Fmt,_,_),Fmt).
-down(limit,down(_,Limit,_),Limit).
-down(peek,down(_,_,Peek),Peek).
+init_down(down(pl,0,unbounded,-1,[])).
+
+down(format,down(Fmt,_,_,_,_),Fmt).                % output format, e.g. pl)
+down(pos,down(_,Pos,_,_,_),Pos).                       % position of next event in output stream
+down(count,down(_,_,Count,_,_),Count).        % Number of output lines requested
+down(limit,down(_,_,_,Limit,_),Limit).                   % max events in output stream
+down(peek,down(_,_,_,_,Peek),Peek).              % list of preceding values
+
+% swap_down(?Key,?DownBefore,?BeforeVal,?DownAfter,?AfterVal)
+%
+swap_down(format,down(Fmt,Pos,Count,Limit,Peek),Fmt,down(New,Pos,Count,Limit,Peek),New).
+swap_down(pos,     down(Fmt,Pos,Count,Limit,Peek),Pos,down(Fmt,New,Count,Limit,Peek),New).
+swap_down(count, down(Fmt,Pos,Count,Limit,Peek),Count,down(Fmt,Pos,New,Limit,Peek),New).
+swap_down(limit,    down(Fmt,Pos,Count,Limit,Peek),Limit,down(Fmt,Pos,Count,New,Peek),New).
+swap_down(peek,  down(Fmt,Pos,Count,Limit,Peek),Peek,down(Fmt,Pos,Count,Limit,New),New).
+
+%swap_down(Key,D1,Old,D2,New) :-
+%	down_key(Key,KeyPos),
+%	functor(D1,Df,Da),
+%	length(A2,Da),
+%	D1 =.. [Df|A1],
+%	D2 =.. [Df|A2],
+%	swap_down_arg(A1,KeyPos,Old,New,A2).
+%
+%swap_down_arg([],_,V,V,[]).
+%swap_down_arg([A|As],N,Old,New,[X|Xs])
+%	(N=0->
+%	    (Old=A,New=X);
+%	    (A=X)),
+%	N1 is N - 1,
+%	swap_down_arg(As,N1,Old,New,Xs).
+
 
 expr(Expr,Down,Mod,F,Gen,T,Down2) :-
 	(expr1(Expr,Down,Mod,F,Gen,T,Down2)->
 	    true;
 	    throw('SubExprFailed'(Expr))).
 
-expr1(gen(Rule),Down,Mod,Pred,xgen(Args,Pred,Arity,Down,Mod,T),T,Down) :-
+expr1(gen(Rule,Count),Down,Mod,Pred,
+      xgen(Args,Pred,Arity,Down1,Mod,T),T,Down1) :-
+	swap_down(count,Down,_,Down1,Count),
 	functor(Rule,Pred,Arity),
 	Rule =.. [Pred|Args],
 	(defined_rule(Mod,Pred,Arity,_,_,_,_,_,_)->   	% Validate that a rule exists here, before actual execution
@@ -162,15 +196,18 @@ expr1(seq(Seq),Down,Mod,Name,(member(G,Gs),G),T,Down) :-
 	plist(Ss,Down,Mod,Name,Gs,T).
 expr1(follow(LookAhead,SrcMain,Follow),Down,Mod,Name,xfollow(LookAhead,Mod,Peek1,Peek2,Gm,Tm,Gf,Tf,T),T,Down2) :-
 	expr(SrcMain,Down,Mod,Name,Gm,Tm,_),
-	Down = down(Fmt,Limit,Peek1),
-	Down2 = down(Fmt,Limit,Peek2),
+	swap_down(peek,Down,Peek1,Down2,Peek2),
+	%Down = down(Fmt,Pos,Count,Limit,Peek1),
+	%Down2 = down(Fmt,Pos,Count,Limit,Peek2),
 	plist(Follow,Down2,Mod,_Name,Gf,Tf).
 expr1(stabilize(Count,ConflictId,Src),Down,Mod,Name,stabilize(Count,Mod,ConflictId,BaseKey,PendingKey,Gen,St,T),T,Down) :-
 	expr(Src,Down,Mod,Name,Gen,St,_),
 	atom_concat(ConflictId,'_base',BaseKey),
 	atom_concat(ConflictId,'_pending',PendingKey).
-expr1(first(Limit,Expr),down(Fmt,_,Peek),Mod,Name,Gen,T,Down2) :-
-	Down2 = down(Fmt,Limit,Peek),
+%expr1(first(Limit,Expr),down(Fmt,Pos,Count,_,Peek),Mod,Name,Gen,T,Down2) :-
+expr1(first(Limit,Expr),Down,Mod,Name,Gen,T,Down2) :-	
+	swap_down(limit,Down,_,Down2,Limit),
+	%Down2 = down(Fmt,Pos,Count,Limit,Peek),
 	expr(Expr,Down2,Mod,Name,Gen,T,Down2).
 expr1(buffer(Src),Down,Mod,Name,evgen:xbuffer(Mod,Name,Gen,St,T),T,Down) :- expr(Src,Down,Mod,Name,Gen,St,_).
 %expr1(load(Src),Down,Mod,Src,evgen:load_thru(Stream,Mod,Type,T),T,Down) :-
@@ -193,8 +230,10 @@ expr1(filter(Kind,Pred,Len,Src),Down,Mod,Name,xfilter(Kind,Pred,Len,Mod,Gen,St,T
 expr1(csort(Column,Src),Down,Mod,Name,xsort(Column,Gen,St,Down,T),T,Down) :-
 	expr(Src,Down,Mod,Name,Gen,St,_).
 
-set_format(file(_,Fmt),down(_,L,P),down(Fmt,L,P)) :- valid_format(Fmt).
-set_format(Fmt,down(_,L,P),down(Fmt,L,P)) :- valid_format(Fmt).
+%set_format(file(_,Fmt),down(_,Pos,Count,L,P),down(Fmt,Pos,Count,L,P)) :- valid_format(Fmt).
+%set_format(Fmt,down(_,Pos,Count,L,P),down(Fmt,Pos,Count,L,P)) :- valid_format(Fmt).
+set_format(file(_,Fmt),Down1,Down2) :- valid_format(Fmt), swap_down(format,Down1,_,Down2,Fmt).
+set_format(Fmt,Down1,Down2) :- valid_format(Fmt), swap_down(format,Down1,_,Down2,Fmt).
 
 
 xsort(Column,Gen,St,_Down,T) :-
@@ -314,7 +353,7 @@ xgen(InArgs,Pred,Arity,Down,Mod,Term) :-
 	defined_rule(Mod,Pred,Arity,InArgs,Limit,Index,Peek,Term,Invocation),
 	statistics(walltime,[UniqueValue,_]),
 	retractall(gen_counter(UniqueValue,_)),
-	assert(gen_counter(UniqueValue,0)),  % TDB max/limit broken
+	assert(gen_counter(UniqueValue,0)),  % TBD max/limit broken
 	Mod:Invocation,
 	retract(gen_counter(UniqueValue,Index)),
 	NextIndex is Index + 1,
@@ -367,7 +406,7 @@ wgen_and_close(Gen,T,Mod,Type,Stream,Down) :-
 	(stream_property(Stream, file_name(Fn))->true;Fn=''),
 	statistics(walltime,[T1,_]),
 	Key = '$LimitCounter',
-	call_cleanup(wgen(Gen,T,Key,Mod,Type,Stream,Down),
+	call_cleanup(wgen_repeat(Gen,T,Key,Mod,Type,Stream,Down),
 		     (stream_property(Stream,interactive)->true;close(Stream))),
 	statistics(walltime,[T2,_]),
 	WallTimeSeconds is (T2 - T1) / 1000,
@@ -377,12 +416,26 @@ wgen_and_close(Gen,T,Mod,Type,Stream,Down) :-
 	(NumberOutput=1->What=line;What=lines),
 	info("Execution summary: ~p ~a in ~s written to ~p",[NumberOutput,What,Sf,Where]).
 
+wgen_repeat(Gen,T,Key,Mod,Type,Stream,Down) :-
+	bb_put(Key,0),	
+	down(count,Down,Count),	
+	repeat,
+	%down(pos,Down,Pos),  % TBD link pos to (pos=X) in use code rule
+	%bb_get(Key,Pos),
+	(wgen(Gen,T,Key,Mod,Type,Stream,Down)->true;fail), % local cut just to be safe
+	bb_get(Key,N),
+	(number(Count)->N >= Count;true),
+	!.
 
-wgen(Gen,T,Key,Mod,Type,Stream,down(_,Limit,_)) :-
-	bb_put(Key,0),
+%wgen(Gen,T,Key,Mod,Type,Stream,down(_,Pos,_,Limit,_)) :-
+wgen(Gen,T,Key,Mod,Type,Stream,Down) :-
+	down(limit,Down,Limit),
+	down(count,Down,Count),
+	(\+number(Count)->Bound=Limit;(Count>Limit->Bound=Count;Bound=Limit)),
+%	bb_put(Key,0),
 	Gen,
 	bb_get(Key,N),
-	((Limit < 0 ; N < Limit)->
+	((Bound < 0 ; N < Bound)->
 	    (format_type(Type,T,Mod,Stream),
 		N1 is N+1,
 		bb_put(Key,N1),

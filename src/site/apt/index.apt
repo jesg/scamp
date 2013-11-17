@@ -11,10 +11,10 @@
   However, they are designed to work well together.
   
   Ruge provides rule-guided <<random test generation>>, and as such is intended to compliment rather than replace your existing 
-  capabilities. Ruge aims to fill the void between the practical limitiations of creating and managing large numbers of 
+  testing capabilities. Ruge aims to fill the void between the practical limitiations of creating and managing large numbers of 
   manually crafted integration or system tests on the one hand, and the complexity challenge of generating large numbers 
-  of non-simplisitic load tests on the other. Ruge provides a programming paradigm to generate semantically rich tests in
-  volume.
+  of non-boilerplate functional or load tests on the other. Ruge provides a programming paradigm to generate semantically 
+  rich tests in volume.
   
   Ruge also provides the capability of comparing datasets across systems. This is useful when verifying a new version of
   a system vs. an existing version.
