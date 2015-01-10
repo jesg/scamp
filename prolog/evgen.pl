@@ -42,6 +42,7 @@
 %%%
 :- meta_predicate gen(2).
 :- meta_predicate gen(2,+).
+:- meta_predicate take(+,2).
 :- meta_predicate take(+,2,+).
 
 run_top(Mod,Expr) :-
