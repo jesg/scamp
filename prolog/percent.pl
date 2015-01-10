@@ -1,12 +1,12 @@
 % -------------------------------------------------------------------------------
 % Copyright 2013 DevClear
-% 
+%
 % Licensed under the Apache License, Version 2.0 (the "License");
 % you may not use this file except in compliance with the License.
 % You may obtain a copy of the License at
-% 
+%
 %   http://www.apache.org/licenses/LICENSE-2.0
-% 
+%
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS,
 % WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,35 +15,21 @@
 %-------------------------------------------------------------------------------
 :- module(percent,[percent/2, prepare_percent/2]).
 
+:- expects_dialect(sicstus).
 :- use_module(library(random)).
 :- use_module(library(lists)).
-:- use_module(library(between)).
+:- use_module(library(aggregate)).
 :- use_module(utils).
-:- load_files(library(plunit),[if(changed),load_type(source)]).
 
-%:- op(520,yfx,'..').  % a little higher than '-'
 :- op(550,xfy,'..').  % a little higher than '-'
 :- op(200,fy,':').  % same as '+'
-:- op(1150,fy,pct).
-:- op(1150,xfy,pct).
 
 % File: percent.pl
 % Author: Brendan McCarhty
 %
 % This file contains utilities for random value generation based on percentage expressions.
-% This includes the percent/2 and prepare_percent/2 predicates as well as term expansion for terms 
-% using the 'pct' operator in the clause head, e.g.:
+% This includes the percent/2 and prepare_percent/2 predicates.
 %
-%  20 pct foo(a).
-%  30 pct foo(b)
-%  pct foo(c)
-%
-% Predicates defined this way are rewritten such that any invocation will attempt to unify
-% with one and only one of the clauses, where the chosen clause is weighted toward the
-% provided percentages -- these should not exceed 100, and clauses with no value are assigned
-% equal probability of the remaining total from the sum of all explicitly valued clauses (the
-% third clause above, for example, is assigned a percentage probability of 50%). Note that if
-% the randomly-chosen clause fails, then another clause is not attempted for a given call.
 
 :- meta_predicate percent(+,2).
 :- meta_predicate prepare_percent(2,+).
@@ -62,7 +48,7 @@
 %     where P is the probability of selecting that entry. Remaining elements with no explicit P are assigned
 %     remaining probability equally thus in [a:50,b,c] both 'b' and 'c' will have a 25% chance of matching.
 % (4) A merge of lists (Expr1 + Expr2), where the merged result is then treated equivalently to the previous case.
-%     For any pair of matching entries between the two lists, if one has a P supplied (Expr:P), then that P will 
+%     For any pair of matching entries between the two lists, if one has a P supplied (Expr:P), then that P will
 %     be included in the merged result. For example ([a,b:40,c:20] + [b,d]) merges to [a,b:40,c:20,d].
 % (5) A reference to a user-defined predicate (:pred) whose first argument will provide a domain of values.
 %     Syntax note: insert a space when combined with '+', e.g (a + : b), not (a +: b).
@@ -216,7 +202,7 @@ eval_range(Min,avg(Avg)..Max,V) :-
 	random_mean(Min1,Avg1,Max1,V).
 eval_range(Min,step(Step)..Max,V) :-
 	redate_range_pair(Min,Max,Min1,Max1),
-	redate_intermediate(Step,Step1),	
+	redate_intermediate(Step,Step1),
 	prandom(Min1,Max1,V1),
 	V is (V1 - ((Min+V1) mod Step1)).
 
@@ -253,7 +239,7 @@ expand_expr(Kind,Len,WeightedList,_Mod,L) :-
 	balance(WeightedList,L).
 expand_expr(set,Len,Min..Max,_,L) :-
 	((Max - Min) - Len) < 5,
-	(for(X,Min,Max), foreach(X,L) do true).
+	(for(X,Min,Max), foreach((X,L),true)).
 
 random_bounded_subset(0,_Mod,_List,_Reduce,[]).
 random_bounded_subset(N,Mod,List,Reduce,[X|Z]) :-
@@ -328,154 +314,10 @@ merge_entry([X:P1|_],X:P2,_) :-
 	P1 \== P2,
 	throw(expr_error(percentage_merge_conflict(P1,P2))).
 
-
-
-%step_random_mean(Low,Mean,High,Step,R) :-
-%	random_mean(Low,Mean,High,V1),
-%	step(V1,Step,R).
-
 random_mean(Low,Mean,High,R) :-
 	Split is 1 - (Mean - Low) / (High - Low),
 	(maybe(Split)->prandom(Low,Mean,R);prandom(Mean,High,R)).
 
-%random_pct(Pct,R) :-
-%	Split is 1 - Pct / 100,
-%	(maybe(Split)->random(0,Pct,R);random(Pct,101,R)).
-
-%step_prandom(Min,Max,Step,Var) :-
-%	prandom(Min,Max,V1),
-%	step(V1,Step,Var).
-
 step(V,Step,V1) :- V1 is Step * (V // Step).
 
 prandom(Low,High,V) :- H1 is High+1, random(Low,H1,V).
-
-
-%%%
-%%% Term expansion
-%%%
-
-% TBD should probably still findall & merge nested probabilities. Otherwise this only applies to the
-% top-level goal, which can still succeed on invocations rather than merge them together. Thus below
-% the probability of 'a' is just 4% : (.2 * .2) = .04.
-%
-%   20 foo(a).
-%   80 foo(b).
-%   20 bar(X) :- foo(X).
-%   80 bar(c).
-
-
-expand_generator_term(((Pct pct Term) :- Body), M, [TrackTerm,(ExpandedTerm :- Body)]) :- !, expand_pct_term(Pct,Term,M,TrackTerm,ExpandedTerm).
-expand_generator_term((Pct pct Term), M, [TrackTerm,ExpandedTerm]) :-
-	expand_pct_term(Pct,Term,M,TrackTerm,ExpandedTerm).
-expand_generator_term(end_of_file, M, Rez) :-
-	findall(Pred,expand_generator_at_eof(M,Pred),Preds),
-	append(Preds,[end_of_file],Rez).
-
-expand_generator_at_eof(M,(Fh :- (percent(ActualIndex,Pct_f), Fb))) :-
-	current_predicate(M:'track_pct_expand$$'/6),
-	bagof((Index:Pct),FirstArg^(M:'track_pct_expand$$'(F,A,FirstArg,Fr,Index,Pct)),Ixs),
-	prepare_percent(Ixs,Pct_f),
-	length(HeadArgs,A),
-	Fh =.. [F|HeadArgs],
-	% Special case for ::/2 rules, which require at least one side to be bound
-	% in order to know what the target predicate is. Since it would be problematic
-	% for other reasons to allow head variations for clauses of the same predicate,
-	% we'll assume that they all match and therefore just work with the first one.
-	(F = '::' ->
-	    (once(M:'track_pct_expand$$'(F,A,FirstArg,_Fr,_Index,_Pct)),
-		arg(1,Fh,FirstArg)) ;
-	    true),
-	Fb =.. [Fr,ActualIndex|HeadArgs].
-
-expand_pct_term(Pct,Term,M,TrackTerm,ExpandedTerm) :-
-	functor(Term,Term_functor,Term_arity),
-	((current_predicate(M:'track_pct_expand$$'/6),
-	    findall(Index,M:'track_pct_expand$$'(Term_functor,Term_arity,_FirstArg,_,Index,_),Indexes))->
-	    length(Indexes,Len);
-	    Len = 0),
-	Index is Len + 1,
-	atom_concat('$_pct_',Term_functor,Fr),
-	Term =.. [_|Args],
-	ExpandedTerm =.. [Fr,Index|Args],
-	(Term_arity=0->FirstArg=[];arg(1,Term,FirstArg)),
-	TrackTerm =.. ['track_pct_expand$$',Term_functor,Term_arity,FirstArg,Fr,Index,Pct].
-
-:- multifile user:term_expansion/6.
-user:term_expansion(Term1, Layout, Ids, Term2, Layout, [pct_token|Ids]) :-
-	nonmember(pct_token, Ids),
-	(prolog_load_context(module,Module)->true;Module=user),
-	(current_predicate(expand_generator_term/3)-> % avoid strange error msg when loading this module
-	    expand_generator_term(Term1,Module,Term2),
-	    true).
-
-
-%%%
-%%% Unit test
-%%%
-:- begin_tests(percent).
-
-rg(From,To,V) :- V >= From, V =< To.
-
-% ?? Spider generates an error for this next line, so commented out.
-% The second arg is meta-predicate, but if (X=5, percent(A,X)) works why shouldn't this?
-% Anyway, it's not really a useful case so it doesn't much matter -bpm2Jun13
-%test(basic,[true(Rez=5)]) :- percent(Rez,5).
-test(basic,[true(Rez=a)]) :- percent(Rez,a).
-test(basic,[true(Rez=a)]) :- percent(Rez,[a]).
-
-test(list,[true(member(Rez,[a]))]) :- percent(Rez,[a]).
-test(list,[true(member(Rez,[a,b]))]) :- percent(Rez,[a,b]).
-test(list,[true(member(Rez,[a,b,c,d,e,f]))]) :- percent(Rez,[a,b,c,d,e,f]).
-test(list,[true(member(Rez,[a]))]) :- percent(Rez,[a:100]).
-test(list,[true(member(Rez,[a,b]))]) :- percent(Rez,[a:50,b:50]).
-test(list,[true(member(Rez,[a,b,c,d,e,f]))]) :- percent(Rez,[a:40,b:20,c:30,d,e,f]).
-test(list,[true((Rez1=a;Rez2=b))]) :- percent(Rez1,[a:99,z]), percent(Rez2,[b:99,z]).
-test(basic,[true(Rez=a)]) :- percent(Rez,[a:100]).
-
-test(range,[true(rg(1,5,Rez))]) :- percent(Rez,1..4).
-test(range,[true(rg(1,5,Rez))]) :- percent(Rez,[1..4]).
-test(range,[true(rg(0,9,Rez))]) :- percent(Rez,1..avg(8)..9).
-test(range,[true(member(Rez,[1,3,5]))]) :- percent(Rez,1..step(2)..5).
-test(range,[true(member(Rez,[1,3,4,5]))]) :- percent(Rez,[1,3..5]).
-
-test(date_range,true(member(Rez,[1-feb-2011,2-feb-2011]))) :-
-	percent(Rez1,[1-feb-2011..2-feb-2011]),
-	idate(Rez,Rez1).
-test(date_range,true(member(Rez,[1-feb-2011,2-feb-2011]))) :-
-	percent(Rez1,[1-feb-2011..days(2)]),
-	idate(Rez,Rez1).
-
-test(list_fn,[true(maplist(rg(1,5),Rez)),true(length(Rez,3))]) :- percent(Rez,bag(3,1..5)).
-test(list_fn,[true(maplist(rg(1,5),Rez))]) :- percent(Rez,bag(3,[4,3,2])).
-test(list_fn,[exception(expr_error(list_length_not_integer,_,_))]) :- percent(_,bag(a,1..5)).
-
-test(bag,true(X=[a,a])) :- percent(X,bag(2,[a])).
-test(set,[exception(impractical_expr(_))]) :- percent(_,set(2,[a])).
-test(kit,true(X=[a])) :- percent(X,kit(1,[a])).
-test(kit,true(X=[a])) :- percent(X,kit(2,[a])).
-
-test(pred,true(member(Rez,[a,b,c]))) :- percent(Rez,:foo(_)).
-test(pred,true(member(Rez,[[a],[b],[c],[a,b],[a,c],[b,c],[a,a],[b,b],[c,c],[b,a],[c,a],[c,b]]))) :- percent(Rez,bag([1,2],:foo(_))).
-test(pred,true(member(Rez,[[a],[b],[c],[a,b],[a,c],[b,a],[b,c],[c,a],[c,b]]))) :- percent(Rez,set([1,2],:foo(_))).
-
-test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[d]+ :foo(_)).
-test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[a,d]+ :foo(_)).
-test(merge,true(member(Rez,[a,b,c,d]))) :- percent(Rez,[a:80,d]+ :foo(_)).
-
-test(arg,true(member(Rez,[a,b,c,d]))) :- percent(Rez,arg(x(a,b,c,d))).
-
-test(prepare,true(member(Rez,[a,b,c]))) :-
-	prepare_percent([a:80,b,c],Prep),
-	percent(Rez,Prep).
-test(prepare,true((length(Rez,Len),Len > 0, Len =< 4))) :-
-	prepare_percent(set([1:85,2:10,3,4],0..999),Prep),
-	percent(Rez,Prep).
-
-foo(a).
-foo(b).
-foo(c).
-
-
-:- end_tests(percent).
-

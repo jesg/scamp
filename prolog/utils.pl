@@ -1,12 +1,12 @@
 % -------------------------------------------------------------------------------
 % Copyright 2013 DevClear
-% 
+%
 % Licensed under the Apache License, Version 2.0 (the "License");
 % you may not use this file except in compliance with the License.
 % You may obtain a copy of the License at
-% 
+%
 %   http://www.apache.org/licenses/LICENSE-2.0
-% 
+%
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS,
 % WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,10 +14,11 @@
 % limitations under the License.
 %-------------------------------------------------------------------------------
 :- module(utils,[time/2, ftime/2, ftime/3, saytime/1, say_time_briefly/1, format_time/2, days_between_dates/3, idate/2, month/3, date_plus/3, repeat_char/2, working_sub_term/2]).
+:- set_prolog_flag(language, iso).
 :- use_module(library(codesio)).
-:- use_module(library(between)).
 :- use_module(library(system)).
 :- use_module(library(lists)).
+:- use_module(library(terms)).
 
 :- meta_predicate time(2,?).
 :- meta_predicate ftime(2,?).
@@ -58,7 +59,7 @@ format_time(Sec,WallTime) :-
 	HrsMin is Min rem 60,
 	plural(Hrs,"hour",HrsTerm),
 	plural(HrsMin,"minute",MinTerm),
-	plural(MinSec,"second",SecTerm),	
+	plural(MinSec,"second",SecTerm),
 	once(fmt_mtime(Hrs,HrsMin,MinSec,Sec,HrsTerm,MinTerm,SecTerm,WallTime)).
 
 fmt_mtime(0,0,_Sec,Original,_,_,_SecTerm,Time) :- format_to_codes("~h seconds",[Original],Time).
@@ -67,7 +68,7 @@ fmt_mtime(Hrs,Min,Sec,_,HrsTerm,MinTerm,SecTerm,Time) :- format_to_codes("~d ~s,
 
 plural(1,X,X).
 plural(N,X,Y) :- N =\= 1, append(X,"s",Y).
-	
+
 
 %repeat_char(N,Char) :- (for(_,1,N) do put_code(Char)).
 repeat_char(N,Char) :- (N=<0->true;(put_code(Char),N1 is N-1,repeat_char(N1,Char))).
@@ -105,7 +106,7 @@ date_operand_to_seconds(day(Day),S) :- date_operand_to_seconds(days(Day),S).
 date_operand_to_seconds(days(Days),S) :- S is Days * 86400. % 60 * 60 * 24.
 date_operand_to_seconds(week(Week),S) :- date_operand_to_seconds(weeks(Week),S).
 date_operand_to_seconds(weeks(Weeks),S) :- S is Weeks * 604800.  % 7 * 60 * 60 * 24.
-	
+
 %date_plus_days(Day-Month-Year,Days,PlusDay-PlusMonth-PlusYear) :-
 %	month(Month,Mx,Max),
 %	between(1,Max,Day),
@@ -140,11 +141,15 @@ days_between_dates(Date1,Date2,DiffInDays) :-
 	date_to_days(Date1,Days1),
 	date_to_days(Date2,Days2),
 	DiffInDays is Days1 - Days2.
-	
+
 idate(Day-Month-Yr,Date) :-
-	(var(Date)->(D1=1,D2=1,D3=1);(D1=_,D2=_,D3=_)),
+	(var(Date)->(D1=1,D2=1,D3=1)),
 	(integer(Month)->Month=Mx;month(Month,Mx,_)),
-	datime(Date,datime(Yr,Mx,Day,D1,D2,D3)).
+  date_time_stamp(date(Yr,Mx,Day,D1,D2,D3,0,-,-),Date).
+
+idate(Day-Month-Yr,Date) :-
+    stamp_date_time(Date,date(Yr,Mx,Day,_,_,_,0,-,-),0),
+    month(Month,Mx,_).
 
 
 month(jan,1,31).
@@ -178,10 +183,10 @@ user:portray(ufs(T)) :- is_list(T) -> format("\"~s\"",[T]) ; write(T).
 
 % Standard library(terms) sub_term barfs on things like gen(1k)
 %
-working_sub_term(T,T).
-working_sub_term(Sub,T) :-
-	T =.. [_|Args],
-	member(Arg,Args),
-	working_sub_term(Sub,Arg).
-	
-
+working_sub_term(Sub,T):-
+    sub_term(Sub,T).
+%working_sub_term(T,T).
+%working_sub_term(Sub,T) :-
+%	T =.. [_|Args],
+%	member(Arg,Args),
+%	working_sub_term(Sub,Arg).
