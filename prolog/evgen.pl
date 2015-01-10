@@ -49,7 +49,6 @@ run_top(Mod,Expr) :-
     run_top(Mod,Expr,[format(pl),output(Stream)]).
 
 run_top(Mod,Expr,Options) :-
-	functor(Expr,F,_),
 	expr_generator(Expr,Mod,Name,Gen,T,Down),
   (member(output(Stream),Options)->true;current_output(Stream)),
   (member(format(Fmt),Options)->true;Fmt=pl),
