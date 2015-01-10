@@ -172,4 +172,4 @@ valid_functor_format(json).
 valid_functor_format(pl).
 
 format_type(pl,T,_Mod,Stream) :- writeq(Stream,T), write(Stream,'.'), nl.
-format_type(json,T,_Mod,Stream) :- prolog_to_json(T,Json),json_write(Stream,Json),nl.
+format_type(json,T,_Mod,Stream) :- prolog_to_json(T,Json),json_write(Stream,Json,[width(0)]),nl.
