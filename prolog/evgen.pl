@@ -42,6 +42,7 @@
 %%%
 :- meta_predicate gen(2).
 :- meta_predicate gen(2,+).
+:- meta_predicate take(+,2).
 :- meta_predicate take(+,2,+).
 
 run_top(Mod,Expr) :-
@@ -49,7 +50,6 @@ run_top(Mod,Expr) :-
     run_top(Mod,Expr,[format(pl),output(Stream)]).
 
 run_top(Mod,Expr,Options) :-
-	functor(Expr,F,_),
 	expr_generator(Expr,Mod,Name,Gen,T,Down),
   (member(output(Stream),Options)->true;current_output(Stream)),
   (member(format(Fmt),Options)->true;Fmt=pl),
@@ -172,4 +172,4 @@ valid_functor_format(json).
 valid_functor_format(pl).
 
 format_type(pl,T,_Mod,Stream) :- writeq(Stream,T), write(Stream,'.'), nl.
-format_type(json,T,_Mod,Stream) :- prolog_to_json(T,Json),json_write(Stream,Json),nl.
+format_type(json,T,_Mod,Stream) :- prolog_to_json(T,Json),json_write(Stream,Json,[width(0)]),nl.
