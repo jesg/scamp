@@ -51,7 +51,7 @@ To dump messages in json run:
 Scamp will output one json object per line.
 
 ###Percent
-Valid expressions for `percent`.
+`percent/2` provides randomization at the goal level.  Valid expressions for `percent`.
 
 | Expression | Result
 |------------|-------
@@ -78,14 +78,15 @@ Generate some users:
 :- use_module(library(http/json_convert)).
 
 :- json_object
-       valid_user(name:text, email).
+       valid_user(name:text, id:integer, email).
 
 :- json_object
        email(user:text, domain:text).
 
-valid_user(Name,email(User,Domain)) :-
+valid_user(Name,Id,email(User,Domain)) :-
     percent(Name,[jason,bill,jill,dill]),
-    percent(User,[naru,foobar,dar]),
+    percent(Id,1..100),
+    percent(User,[naru:70,foobar,dar]),
     percent(Domain,[google,yahoo]).
 
 dump_5_users :-
@@ -94,6 +95,13 @@ dump_5_users :-
 ```
 
 Run: `swipl -f complex_random_cases.pl -g dump_5_users`
+```
+{"name":"jill", "id":10, "email": {"user":"naru", "domain":"google"}}
+{"name":"jason", "id":56, "email": {"user":"naru", "domain":"google"}}
+{"name":"bill", "id":70, "email": {"user":"foobar", "domain":"yahoo"}}
+{"name":"jason", "id":69, "email": {"user":"naru", "domain":"google"}}
+{"name":"jill", "id":65, "email": {"user":"dar", "domain":"google"}}
+```
 
 ###Major Differences with Ruge
 Scamp seeks to be a library not a framework so it does not include the `::` operator or the `pct` operator.  Many of the predicates in Ruge's evgen module where removed due to a lack of unit tests.

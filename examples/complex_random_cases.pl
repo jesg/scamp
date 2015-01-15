@@ -7,14 +7,15 @@
 :- use_module(library(http/json_convert)).
 
 :- json_object
-       valid_user(name:text, email).
+       valid_user(name:text, id:integer, email).
 
 :- json_object
        email(user:text, domain:text).
 
-valid_user(Name,email(User,Domain)) :-
+valid_user(Name,Id,email(User,Domain)) :-
     percent(Name,[jason,bill,jill,dill]),
-    percent(User,[naru,foobar,dar]),
+    percent(Id,1..100),
+    percent(User,[naru:70,foobar,dar]),
     percent(Domain,[google,yahoo]).
 
 dump_5_users :-
